@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let source = std::io::read_to_string(std::io::stdin())?;
         let tree = odt::parse::parse_untyped(&source)?;
         let output = odt::print::format(tree);
-        print!("{}", output);
+        print!("{output}");
         return Ok(());
     }
     let mut success = true;
@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Reopening the file like this can lose data (if interrupted or the disk is full).
             std::fs::write(filename, output)?;
         } else {
-            print!("{}", output);
+            print!("{output}");
         }
     }
     if success {

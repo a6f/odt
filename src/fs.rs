@@ -15,7 +15,7 @@ pub trait Loader {
 
     /// Read and cache a file.  If successful, the return value is a reference to
     /// the path and the data (both owned by `self`).  Otherwise `None` is returned.
-    fn read<'a>(&'a self, path: PathBuf) -> Option<(&'a Path, &'a [u8])>;
+    fn read(&self, path: PathBuf) -> Option<(&Path, &[u8])>;
 
     // TODO:  This should return a custom error type holding the path.  Use SourceError?
     fn find_utf8(
