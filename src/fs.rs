@@ -173,7 +173,7 @@ impl Loader for LocalFileLoader {
             .filter(|(_, bytes)| bytes.is_some())
             .map(|(path, _)| path.clone())
             .collect();
-        deps.sort();
+        deps.sort_unstable();
         deps
     }
 
@@ -185,7 +185,7 @@ impl Loader for LocalFileLoader {
             .iter()
             .cloned()
             .collect();
-        dirs.sort();
+        dirs.sort_unstable();
         dirs
     }
 
