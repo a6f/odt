@@ -170,7 +170,8 @@ impl Loader for LocalFileLoader {
             .lock()
             .unwrap()
             .iter()
-            .filter_map(|(path, content)| content.is_some().then_some(path.clone()))
+            .filter(|(_, bytes)| bytes.is_some())
+            .map(|(path, _)| path.clone())
             .collect();
         deps.sort();
         deps
