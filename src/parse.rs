@@ -80,7 +80,7 @@ fn visit_includes<'a>(
     dts: &Dts<'a>,
     out: &mut Vec<&'a gen::TopDef<'a>>,
 ) -> Result<(), SourceError> {
-    let dir = Some(path.parent().unwrap());
+    let dir = path.parent().unwrap();
     for include in dts.include {
         let pathspan = include.quoted_string.trim_one();
         // The path is not unescaped in any way before use.
