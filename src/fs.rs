@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 pub trait Loader {
-    /// Search for an include.  `relative_to` may specify one directory to check first.
+    /// Search for an include.  `relative_to` specifies one directory to check first.
     /// The result is the path found and its contents, or `None` if no matching file was found.
     fn find(&self, relative_to: &Path, included_path: &Path) -> Option<(&Path, &[u8])>;
 
