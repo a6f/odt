@@ -144,6 +144,8 @@ impl Scribe {
 
 impl Drop for Scribe {
     fn drop(&mut self) {
-        panic!("Scribe must be consumed explicitly");
+        if !std::thread::panicking() {
+            panic!("Scribe must be consumed explicitly");
+        }
     }
 }
