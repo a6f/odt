@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::error::SourceError;
 use crate::node::Node;
 use crate::parse::TypedRuleExt;
@@ -52,11 +54,14 @@ impl<P> LabelResolver<'_, P> {
         &self,
         relative_to: &NodePath,
         propref: &PropertyReference,
-    ) -> Option<&P> {
+        visited: &mut HashSet<(String, String)>,
+    ) -> Result<(&P, (String, String)), SourceError> {
         // root.walk() expects all segments to be Node elements, so strip off
         // the property name after the last '/'.
         let noderef = propref.str().rsplit_once('/').map(|(a, _)| a).unwrap_or("");
-        let nodepath = self.resolve_str(relative_to, noderef)?;
+        let nodepath = self
+            .resolve_str(relative_to, noderef)
+            .ok_or_else(|| propref.err("no such node"))?;
 
         // Lookup the property in the node
         let propname = propref
@@ -65,8 +70,20 @@ impl<P> LabelResolver<'_, P> {
             .map(|(_, b)| b)
             .unwrap_or(propref.str())
             .trim_matches(['}']);
-        let prop = self.1.walk(nodepath.segments())?.get_property(propname)?;
+        let prop = self
+            .1
+            .walk(nodepath.segments())
+            .ok_or_else(|| propref.err("no such node"))?
+            .get_property(propname)
+            .ok_or_else(|| propref.err("no such property"))?;
 
-        Some(prop)
+        // Detect cycles
+        let key = (nodepath.to_string(), propname.to_string());
+        if visited.contains(&key) {
+            return Err(propref.err("property reference cycle detected"));
+        }
+        visited.insert(key.clone());
+
+        Ok((prop, key))
     }
 }

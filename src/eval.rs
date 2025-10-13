@@ -10,6 +10,7 @@ use crate::{Arena, BinaryNode, SourceNode};
 use core::str::CharIndices;
 use hashlink::{LinkedHashMap, LinkedHashSet};
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 /// Assigns phandles and evaluates expressions.
@@ -263,10 +264,9 @@ fn eval_property_reference(
     phandles: &LinkedHashMap<NodePath, u32>,
     read_file: &impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
     propref: &PropertyReference,
+    visited: &mut HashSet<(String, String)>,
 ) -> Result<Vec<u8>, SourceError> {
-    let prop = labels
-        .prop_from_prop_ref(loc, propref)
-        .ok_or_else(|| propref.err("no such property"))?;
+    let (prop, key) = labels.prop_from_prop_ref(loc, propref, visited)?;
 
     let Some(propvalue) = (*prop).prop_value else {
         return Err(propref.err("referenced property has no value"));
@@ -277,16 +277,21 @@ fn eval_property_reference(
     let lookup_phandle = |nr: &NodeReference| Ok(*phandles.get(&labels.resolve(loc, nr)?).unwrap());
     let lookup_property = |pr: &PropertyReference| {
         // Recurse to resolve nested property references
-        eval_property_reference(loc, labels, phandles, read_file, pr)
+        eval_property_reference(loc, labels, phandles, read_file, pr, visited)
     };
 
-    evaluate_propvalue(
+    let result = evaluate_propvalue(
         propvalue,
         lookup_label,
         lookup_phandle,
         lookup_property,
         |p| read_file(p),
-    )
+    );
+
+    // Remove the visited key from the set now that we're done evaluating it
+    visited.remove(&key);
+
+    result
 }
 
 fn evaluate_expressions(
@@ -307,7 +312,8 @@ fn evaluate_expressions(
                 Ok(*phandles.get(&labels.resolve(loc, noderef)?).unwrap())
             };
             let lookup_prop = |propref: &PropertyReference| {
-                eval_property_reference(loc, labels, phandles, &read_file, propref)
+                let mut visited = HashSet::new();
+                eval_property_reference(loc, labels, phandles, &read_file, propref, &mut visited)
             };
             match evaluate_propvalue(
                 propvalue,
@@ -334,7 +340,7 @@ fn evaluate_propvalue(
     propvalue: &PropValue,
     lookup_label: impl Fn(&NodeReference) -> Result<NodePath, SourceError>,
     lookup_phandle: impl Fn(&NodeReference) -> Result<u32, SourceError>,
-    lookup_property: impl Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>,
+    mut lookup_property: impl FnMut(&PropertyReference) -> Result<Vec<u8>, SourceError>,
     read_file: impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
 ) -> Result<Vec<u8>, SourceError> {
     let mut r = vec![];
@@ -367,13 +373,17 @@ fn evaluate_propvalue(
                             let bytes = lookup_property(propref)?;
                             match bytes.len() {
                                 1 if bits == 8 => bytes[0] as u64,
-                                2 if bits == 16 => u16::from_be_bytes(bytes.try_into().unwrap()) as u64,
-                                4 if bits == 32 => u32::from_be_bytes(bytes.try_into().unwrap()) as u64,
+                                2 if bits == 16 => {
+                                    u16::from_be_bytes(bytes.try_into().unwrap()) as u64
+                                }
+                                4 if bits == 32 => {
+                                    u32::from_be_bytes(bytes.try_into().unwrap()) as u64
+                                }
                                 8 if bits == 64 => u64::from_be_bytes(bytes.try_into().unwrap()),
                                 n => {
                                     return Err(propref.err(format!(
                                         "unsupported property length {n} for /bits/ == {bits}"
-                                    )))
+                                    )));
                                 }
                             }
                         }
@@ -693,6 +703,19 @@ fn eval_binary_op(left: u64, op: &str, right: u64) -> Result<u64, &'static str> 
         "!=" => Ok((left != right) as u64),
         _ => Err("unknown binary operator"),
     }
+}
+
+#[test]
+fn test_property_reference_cycles() {
+    let source = include_str!("testdata/property_references_cycle.dts");
+    let loader = crate::fs::DummyLoader;
+    let arena = crate::Arena::new();
+    let dts = crate::parse::parse_typed(source, &arena).unwrap();
+    let mut scribe = Scribe::new(true);
+    let (tree, node_labels, _, _) = crate::merge::merge(dts, &mut scribe);
+    _ = eval(tree, node_labels, &loader, &mut scribe);
+    let err = scribe.collect().err().unwrap();
+    assert!(err.to_string().contains("property reference cycle detected"));
 }
 
 #[test]
