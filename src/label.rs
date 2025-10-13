@@ -8,6 +8,12 @@ use crate::parse::rules::{NodeReference, PropertyReference};
 use crate::path::NodePath;
 use hashlink::LinkedHashMap;
 
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct CycleDetectionKey {
+    pub nodepath: NodePath,
+    pub propname: String,
+}
+
 pub type LabelMap = LinkedHashMap<String, NodePath>;
 
 pub struct LabelResolver<'a, P>(pub &'a LabelMap, pub &'a Node<P>);
@@ -55,8 +61,8 @@ impl<P> LabelResolver<'_, P> {
         &self,
         relative_to: &NodePath,
         propref: &PropertyReference,
-        visited: &Mutex<HashSet<(String, String)>>,
-    ) -> Result<(&P, (String, String)), SourceError> {
+        visited: &Mutex<HashSet<CycleDetectionKey>>,
+    ) -> Result<(&P, CycleDetectionKey), SourceError> {
         // root.walk() expects all segments to be Node elements, so strip off
         // the property name after the last '/'.
         let noderef = propref.str().rsplit_once('/').map(|(a, _)| a).unwrap_or("");
@@ -80,7 +86,10 @@ impl<P> LabelResolver<'_, P> {
 
         // Detect cycles
         let mut visited = visited.lock().unwrap();
-        let key = (nodepath.to_string(), propname.to_string());
+        let key = CycleDetectionKey {
+            nodepath,
+            propname: propname.to_string(),
+        };
         if visited.contains(&key) {
             return Err(propref.err("property reference cycle detected"));
         }

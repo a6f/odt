@@ -2,7 +2,7 @@
 
 use crate::error::{Scribe, SourceError};
 use crate::fs::Loader;
-use crate::label::{LabelMap, LabelResolver};
+use crate::label::{LabelMap, LabelResolver, CycleDetectionKey};
 use crate::parse::rules::*;
 use crate::parse::{SpanExt, TypedRuleExt, parse_quoted_string};
 use crate::path::NodePath;
@@ -265,7 +265,7 @@ fn eval_property_reference(
     phandles: &LinkedHashMap<NodePath, u32>,
     read_file: &impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
     propref: &PropertyReference,
-    visited: &Mutex<HashSet<(String, String)>>,
+    visited: &Mutex<HashSet<CycleDetectionKey>>,
 ) -> Result<Vec<u8>, SourceError> {
     let (prop, key) = labels.prop_from_prop_ref(loc, propref, visited)?;
 
@@ -274,11 +274,11 @@ fn eval_property_reference(
     };
 
     // Reuse the lookup rules from `evaluate_expressions`
-    let lookup_label = |nr: &NodeReference| labels.resolve(loc, nr);
-    let lookup_phandle = |nr: &NodeReference| Ok(*phandles.get(&labels.resolve(loc, nr)?).unwrap());
+    let lookup_label = |nr: &NodeReference| labels.resolve(&key.nodepath, nr);
+    let lookup_phandle = |nr: &NodeReference| Ok(*phandles.get(&labels.resolve(&key.nodepath, nr)?).unwrap());
     let lookup_property = |pr: &PropertyReference| {
         // Recurse to resolve nested property references
-        eval_property_reference(loc, labels, phandles, read_file, pr, visited)
+        eval_property_reference(&key.nodepath, labels, phandles, read_file, pr, visited)
     };
 
     let result = evaluate_propvalue(
@@ -669,7 +669,7 @@ impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for U
                     4 => Ok(u32::from_be_bytes(bytes.try_into().unwrap()) as u64),
                     8 => Ok(u64::from_be_bytes(bytes.try_into().unwrap())),
                     n => Err(x.err(format!(
-                        "property reference returned {n} bytes, need 4 or 8"
+                        "property reference returned {n} bytes, need 4 or 8 | bytes={bytes:?}"
                     ))),
                 }
             },
