@@ -1,0 +1,29 @@
+/dts-v1/;
+
+/ {
+    check {
+        label_foo: foo {
+            u32_prop = <0 1>, <0 1>;
+        };
+    };
+};
+
+/ {
+    check {
+        string_prop = "value", "value";
+
+        relative_ref = @{./string_prop};
+        absolute_ref = @{/check/string_prop};
+
+        absolute_ref_to_label = @{/check/foo/u32_prop};
+        relative_xref_to_label = @{label_foo/u32_prop};
+        absolute_xref_to_label = @{/check/foo/u32_prop};
+
+        // TODO: move these to a test that's expected to fail
+        // Expected: `property 'label_target' not found`, etc
+        //absolute_ref_to_node = @{/check/target}; // should fail
+        //relative_ref_to_node = @{target}; // should fail
+        //absolute_xref_to_node = @{/check/label_target}; // should fail
+        //relative_xref_to_node = @{label_target}; // should fail
+    };
+};

@@ -220,6 +220,7 @@ fn node_phandle<P>(
         propvalue,
         |_| Err(propvalue.err("phandle expression cannot use a string node reference")),
         lookup_phandle,
+        |_| Err(propvalue.err("phandle expression cannot use property references")),
         // dtc allows this, but there's no need for it.
         |_| Err(propvalue.err("phandle expression cannot use /incbin/")),
     )?;
@@ -256,6 +257,38 @@ fn visit_node_phandles<P>(
     }
 }
 
+fn eval_property_reference(
+    loc: &NodePath,
+    labels: &LabelResolver<&Prop>,
+    phandles: &LinkedHashMap<NodePath, u32>,
+    read_file: &impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
+    propref: &PropertyReference,
+) -> Result<Vec<u8>, SourceError> {
+    let prop = labels
+        .prop_from_prop_ref(loc, propref)
+        .ok_or_else(|| propref.err("no such property"))?;
+
+    let Some(propvalue) = (*prop).prop_value else {
+        return Err(propref.err("referenced property has no value"));
+    };
+
+    // Reuse the lookup rules from `evaluate_expressions`
+    let lookup_label = |nr: &NodeReference| labels.resolve(loc, nr);
+    let lookup_phandle = |nr: &NodeReference| Ok(*phandles.get(&labels.resolve(loc, nr)?).unwrap());
+    let lookup_property = |pr: &PropertyReference| {
+        // Recurse to resolve nested property references
+        eval_property_reference(loc, labels, phandles, read_file, pr)
+    };
+
+    evaluate_propvalue(
+        propvalue,
+        lookup_label,
+        lookup_phandle,
+        lookup_property,
+        |p| read_file(p),
+    )
+}
+
 fn evaluate_expressions(
     root: SourceNode,
     node_labels: &LabelMap,
@@ -273,7 +306,16 @@ fn evaluate_expressions(
             let lookup_phandle = |noderef: &NodeReference| {
                 Ok(*phandles.get(&labels.resolve(loc, noderef)?).unwrap())
             };
-            match evaluate_propvalue(propvalue, lookup_label, lookup_phandle, read_file) {
+            let lookup_prop = |propref: &PropertyReference| {
+                eval_property_reference(loc, labels, phandles, &read_file, propref)
+            };
+            match evaluate_propvalue(
+                propvalue,
+                lookup_label,
+                lookup_phandle,
+                lookup_prop,
+                read_file,
+            ) {
                 Ok(v) => v,
                 Err(e) => {
                     scribe.err(e);
@@ -288,11 +330,11 @@ fn evaluate_expressions(
 }
 
 // TODO:  Accept Scribe here as well.  It's probably not useful to report more than one error, or
-// perform partial evaluation, but we might want to return warnings, e.g. about integer overflow.
 fn evaluate_propvalue(
     propvalue: &PropValue,
     lookup_label: impl Fn(&NodeReference) -> Result<NodePath, SourceError>,
     lookup_phandle: impl Fn(&NodeReference) -> Result<u32, SourceError>,
+    lookup_property: impl Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>,
     read_file: impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
 ) -> Result<Vec<u8>, SourceError> {
     let mut r = vec![];
@@ -320,6 +362,10 @@ fn evaluate_propvalue(
                                 return Err(noderef.err("phandle references need /bits/ == 32"));
                             }
                             phandle as u64
+                        }
+                        Cell::PropertyReference(propref) => {
+                            println!("propref = {:?}", propref);
+                            todo!()
                         }
                         Cell::ParenExpr(expr) => expr.eval()?,
                         Cell::IntLiteral(lit) => lit.eval()?,
@@ -356,6 +402,10 @@ fn evaluate_propvalue(
                 let target = lookup_label(noderef)?;
                 r.extend(target.display().as_bytes());
                 r.push(0);
+            }
+            Value::PropertyReference(propref) => {
+                let prop = lookup_property(propref)?;
+                r.extend(prop);
             }
             Value::ByteString(bytestring) => {
                 for label_or_hex_byte in bytestring.label_or_hex_byte {
@@ -643,6 +693,7 @@ fn test_eval() {
         include_str!("testdata/phandle.dts"),
         #[cfg(feature = "wrapping-arithmetic")]
         include_str!("testdata/random_expressions.dts"),
+        include_str!("testdata/property_references.dts"),
         include_str!("testdata/references.dts"),
     ] {
         let loader = crate::fs::DummyLoader;
