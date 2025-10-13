@@ -364,8 +364,18 @@ fn evaluate_propvalue(
                             phandle as u64
                         }
                         Cell::PropertyReference(propref) => {
-                            println!("propref = {:?}", propref);
-                            todo!()
+                            let bytes = lookup_property(propref)?;
+                            match bytes.len() {
+                                1 if bits == 8 => bytes[0] as u64,
+                                2 if bits == 16 => u16::from_be_bytes(bytes.try_into().unwrap()) as u64,
+                                4 if bits == 32 => u32::from_be_bytes(bytes.try_into().unwrap()) as u64,
+                                8 if bits == 64 => u64::from_be_bytes(bytes.try_into().unwrap()),
+                                n => {
+                                    return Err(propref.err(format!(
+                                        "unsupported property length {n} for /bits/ == {bits}"
+                                    )))
+                                }
+                            }
                         }
                         Cell::ParenExpr(expr) => expr.eval()?,
                         Cell::IntLiteral(lit) => lit.eval()?,
