@@ -149,7 +149,7 @@ ComparePrec = { ShiftPrec ~ (ComparePrecOp ~ ShiftPrec)* }
 ShiftPrec = { AddPrec ~ (ShiftPrecOp ~ AddPrec)* }
 AddPrec = { MulPrec ~ (AddPrecOp ~ MulPrec)* }
 MulPrec = { UnaryPrec ~ (MulPrecOp ~ UnaryPrec)* }
-UnaryPrec = { UnaryExpr | ParenExpr | IntLiteral }
+UnaryPrec = { UnaryExpr | ParenExpr | IntLiteral | PropertyReference }
 UnaryExpr = { UnaryOp ~ UnaryPrec }
 
 EqualPrecOp = { Equal | NotEqual }

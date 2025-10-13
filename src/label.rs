@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::Mutex;
 
 use crate::error::SourceError;
 use crate::node::Node;
@@ -54,7 +55,7 @@ impl<P> LabelResolver<'_, P> {
         &self,
         relative_to: &NodePath,
         propref: &PropertyReference,
-        visited: &mut HashSet<(String, String)>,
+        visited: &Mutex<HashSet<(String, String)>>,
     ) -> Result<(&P, (String, String)), SourceError> {
         // root.walk() expects all segments to be Node elements, so strip off
         // the property name after the last '/'.
@@ -78,6 +79,7 @@ impl<P> LabelResolver<'_, P> {
             .ok_or_else(|| propref.err("no such property"))?;
 
         // Detect cycles
+        let mut visited = visited.lock().unwrap();
         let key = (nodepath.to_string(), propname.to_string());
         if visited.contains(&key) {
             return Err(propref.err("property reference cycle detected"));
