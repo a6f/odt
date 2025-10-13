@@ -22,12 +22,5 @@
         absolute_xref_to_label = @{/check/foo/u32_prop};
 
         cell_test = < @{/u32_cell} 2 3 >, <1 2 3>;
-
-        // TODO: move these to a test that's expected to fail
-        // Expected: `property 'label_target' not found`, etc
-        //absolute_ref_to_node = @{/check/target}; // should fail
-        //relative_ref_to_node = @{target}; // should fail
-        //absolute_xref_to_node = @{/check/label_target}; // should fail
-        //relative_xref_to_node = @{label_target}; // should fail
     };
 };
