@@ -29,7 +29,7 @@ impl<P> LabelResolver<'_, P> {
     }
 
     pub fn resolve_str(&self, relative_to: &NodePath, noderef: &str) -> Option<NodePath> {
-        let path = noderef.trim_matches(['&', '@', '{', '}']);
+        let path = noderef.trim_matches(['&', '$', '{', '}']);
         let mut segments = path.split('/');
         let first = segments.next().unwrap();
         let segments = segments.filter(|s| !s.is_empty());

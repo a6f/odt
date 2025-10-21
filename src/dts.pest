@@ -81,7 +81,7 @@ labelname_head = _{ 'A'..'Z' | "_" | 'a'..'z' }
 labelname_rest = _{ 'A'..'Z' | "_" | 'a'..'z' | '0'..'9' }
 
 NodeReference = @{ ("&" ~ LabelName) | ("&{" ~ NodePath ~ "}") }
-PropertyReference = @{ ("@" ~ LabelName) | ("@{" ~ PropertyPath ~ "}") }
+PropertyReference = @{ ("$" ~ LabelName) | ("${" ~ PropertyPath ~ "}") }
 
 // dtc will accept and normalize node paths such as "/x///y/".
 // label-relative references such as &{label/child/subnode} also work.
