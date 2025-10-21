@@ -61,7 +61,7 @@ impl<P> LabelResolver<'_, P> {
     ) -> Result<(NodePath, &'a str, &P), SourceError> {
         // root.walk() expects all segments to be Node elements, so strip off
         // the property name after the last '/'.
-        let noderef = propref.str().rsplit_once('/').map(|(a, _)| a).unwrap_or("");
+        let noderef = propref.str().rsplit_once('/').map(|(a, _)| a).unwrap_or(".");
         let nodepath = self
             .resolve_str(relative_to, noderef)
             .ok_or_else(|| propref.err("no such node"))?;
