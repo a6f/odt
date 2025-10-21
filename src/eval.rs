@@ -354,17 +354,18 @@ fn evaluate_propvalue(
     propvalue: &PropValue,
     lookup_label: impl Fn(&NodeReference) -> Result<NodePath, SourceError>,
     lookup_phandle: impl Fn(&NodeReference) -> Result<u32, SourceError>,
-    lookup_property: impl Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>,
+    lookup_property_fn: impl Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>,
     read_file: impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
 ) -> Result<Vec<u8>, SourceError> {
     let mut r = vec![];
+    let lookup_property = Some(&lookup_property_fn);
     for labeled_value in propvalue.labeled_value {
         match labeled_value.value {
             Value::Cells(cells) => {
                 let bits = match cells.bits {
                     None => 32,
                     Some(bits) => {
-                        let n = bits.numeric_literal.eval(Some(&lookup_property))?;
+                        let n = bits.numeric_literal.eval(lookup_property)?;
                         match n {
                             8 | 16 | 32 | 64 => n,
                             _ => return Err(bits.err("bad bit width: must be 8, 16, 32, or 64")),
@@ -384,7 +385,7 @@ fn evaluate_propvalue(
                             phandle as u64
                         }
                         Cell::PropertyReference(propref) => {
-                            let bytes = lookup_property(propref)?;
+                            let bytes = lookup_property_fn(propref)?;
                             match bytes.len() {
                                 1 if bits == 8 => bytes[0] as u64,
                                 2 if bits == 16 => {
@@ -401,8 +402,8 @@ fn evaluate_propvalue(
                                 }
                             }
                         }
-                        Cell::ParenExpr(expr) => expr.eval(Some(&lookup_property))?,
-                        Cell::IntLiteral(lit) => lit.eval(Some(&lookup_property))?,
+                        Cell::ParenExpr(expr) => expr.eval(lookup_property)?,
+                        Cell::IntLiteral(lit) => lit.eval(lookup_property)?,
                     };
                     if bits < 64 {
                         // dtc warns if the lost bits are not all the same.
@@ -438,7 +439,7 @@ fn evaluate_propvalue(
                 r.push(0);
             }
             Value::PropertyReference(propref) => {
-                let prop = lookup_property(propref)?;
+                let prop = lookup_property_fn(propref)?;
                 r.extend(prop);
             }
             Value::ByteString(bytestring) => {
