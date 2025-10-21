@@ -364,7 +364,7 @@ fn evaluate_propvalue(
                 let bits = match cells.bits {
                     None => 32,
                     Some(bits) => {
-                        let n = bits.numeric_literal.eval(&Some(&lookup_property))?;
+                        let n = bits.numeric_literal.eval(Some(&lookup_property))?;
                         match n {
                             8 | 16 | 32 | 64 => n,
                             _ => return Err(bits.err("bad bit width: must be 8, 16, 32, or 64")),
@@ -401,8 +401,8 @@ fn evaluate_propvalue(
                                 }
                             }
                         }
-                        Cell::ParenExpr(expr) => expr.eval(&Some(&lookup_property))?,
-                        Cell::IntLiteral(lit) => lit.eval(&Some(&lookup_property))?,
+                        Cell::ParenExpr(expr) => expr.eval(Some(&lookup_property))?,
+                        Cell::IntLiteral(lit) => lit.eval(Some(&lookup_property))?,
                     };
                     if bits < 64 {
                         // dtc warns if the lost bits are not all the same.
@@ -561,13 +561,13 @@ impl<'a> UnescapeExt<'a> for pest::Span<'a> {
 
 /// Evaluate an expression or parse a literal.
 trait EvalExt<T> {
-    fn eval(&self, lookup_property: &Option<T>) -> Result<u64, SourceError>
+    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError>
     where
         T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>;
 }
 
 impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for IntLiteral<'_> {
-    fn eval(&self, lookup_property: &Option<T>) -> Result<u64, SourceError> {
+    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         match self {
             IntLiteral::CharLiteral(c) => {
                 let bytes = c.unescape()?;
@@ -580,7 +580,7 @@ impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for I
 }
 
 impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for NumericLiteral<'_> {
-    fn eval(&self, _lookup_property: &Option<T>) -> Result<u64, SourceError> {
+    fn eval(&self, _lookup_property: Option<&T>) -> Result<u64, SourceError> {
         let s = self.str().trim_end_matches(['U', 'L']); // dtc is case-sensitive here
         parse_int(s).ok_or_else(|| self.err("bad numeric literal"))
     }
@@ -601,19 +601,19 @@ fn parse_int(s: &str) -> Option<u64> {
 }
 
 impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for ParenExpr<'_> {
-    fn eval(&self, lookup_property: &Option<T>) -> Result<u64, SourceError> {
+    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         self.expr.eval(lookup_property)
     }
 }
 
 impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for Expr<'_> {
-    fn eval(&self, lookup_property: &Option<T>) -> Result<u64, SourceError> {
+    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         self.ternary_prec.eval(lookup_property)
     }
 }
 
 impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for UnaryExpr<'_> {
-    fn eval(&self, lookup_property: &Option<T>) -> Result<u64, SourceError> {
+    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         let arg = self.unary_prec.eval(lookup_property)?;
         match self.unary_op {
             UnaryOp::LogicalNot(_) => Ok((arg == 0).into()),
@@ -625,7 +625,7 @@ impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for U
 }
 
 impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for TernaryPrec<'_> {
-    fn eval(&self, lookup_property: &Option<T>) -> Result<u64, SourceError> {
+    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         let left = self.logical_or_prec.eval(lookup_property)?;
         let [mid, right] = self.expr else {
             return Ok(left);
@@ -638,7 +638,7 @@ impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for T
 macro_rules! impl_binary_eval {
     ($rule:ident, $op:ident, $arg:ident) => {
         impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for $rule<'_> {
-            fn eval(&self, lookup_property: &Option<T>) -> Result<u64, SourceError> {
+            fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
                 let mut left = self.$arg[0].eval(lookup_property);
                 for (op, right) in core::iter::zip(self.$op, &self.$arg[1..]) {
                     let right = right.eval(lookup_property)?;
@@ -667,7 +667,7 @@ impl_binary_eval!(AddPrec, add_prec_op, mul_prec);
 impl_binary_eval!(MulPrec, mul_prec_op, unary_prec);
 
 impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for UnaryPrec<'_> {
-    fn eval(&self, lookup_property: &Option<T>) -> Result<u64, SourceError> {
+    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         match self {
             UnaryPrec::UnaryExpr(x) => x.eval(lookup_property),
             UnaryPrec::ParenExpr(x) => x.eval(lookup_property),
