@@ -72,7 +72,7 @@ impl<P> LabelResolver<'_, P> {
             .rsplit_once('/')
             .map(|(_, b)| b)
             .unwrap_or(propref.str())
-            .trim_matches(['}']);
+            .trim_matches(['$', '{', '}']);
         let prop = self
             .1
             .walk(nodepath.segments())

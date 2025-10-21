@@ -21,6 +21,8 @@
         relative_ref = ${./string_prop};
         absolute_ref = ${/check/string_prop};
 
+        ref_to_sibling = ${string_prop};
+
         absolute_ref_to_label  = ${/check/foo/u32_prop};
         relative_xref_to_label = ${label_foo/u32_prop};
         absolute_xref_to_label = ${/check/foo/u32_prop};
