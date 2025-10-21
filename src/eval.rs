@@ -270,7 +270,7 @@ fn eval_property_reference(
     let (prop, key) = labels.prop_from_prop_ref(loc, propref, visited)?;
 
     let Some(propvalue) = (*prop).prop_value else {
-        return Err(propref.err("referenced property has no value"));
+        return Ok(vec![]);
     };
 
     // Reuse the lookup rules from `evaluate_expressions`
