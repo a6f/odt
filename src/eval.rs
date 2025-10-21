@@ -267,7 +267,20 @@ fn eval_property_reference(
     propref: &PropertyReference,
     visited: &Mutex<HashSet<CycleDetectionKey>>,
 ) -> Result<Vec<u8>, SourceError> {
-    let (prop, key) = labels.prop_from_prop_ref(loc, propref, visited)?;
+    let (nodepath, propname, prop) = labels.prop_from_prop_ref(loc, propref)?;
+
+    // Detect cycles
+    let key = CycleDetectionKey {
+        nodepath,
+        propname: propname.to_string(),
+    };
+    {
+        let mut visited = visited.lock().unwrap();
+        if visited.contains(&key) {
+            return Err(propref.err("property reference cycle detected"));
+        }
+        visited.insert(key.clone());
+    }
 
     let Some(propvalue) = (*prop).prop_value else {
         return Ok(vec![]);
@@ -313,8 +326,7 @@ fn evaluate_expressions(
                 Ok(*phandles.get(&labels.resolve(loc, noderef)?).unwrap())
             };
             let lookup_prop = |propref: &PropertyReference| {
-                let visited = Mutex::new(HashSet::new());
-                eval_property_reference(loc, labels, phandles, &read_file, propref, &visited)
+                eval_property_reference(loc, labels, phandles, &read_file, propref, &Mutex::new(HashSet::new()))
             };
             match evaluate_propvalue(
                 propvalue,
@@ -337,6 +349,7 @@ fn evaluate_expressions(
 }
 
 // TODO:  Accept Scribe here as well.  It's probably not useful to report more than one error, or
+// perform partial evaluation, but we might want to return warnings, e.g. about integer overflow.
 fn evaluate_propvalue(
     propvalue: &PropValue,
     lookup_label: impl Fn(&NodeReference) -> Result<NodePath, SourceError>,
@@ -724,15 +737,19 @@ fn eval_binary_op(left: u64, op: &str, right: u64) -> Result<u64, &'static str> 
 
 #[test]
 fn test_property_reference_cycles() {
-    let source = include_str!("testdata/property_references_cycle.dts");
-    let loader = crate::fs::DummyLoader;
-    let arena = crate::Arena::new();
-    let dts = crate::parse::parse_typed(source, &arena).unwrap();
-    let mut scribe = Scribe::new(true);
-    let (tree, node_labels, _, _) = crate::merge::merge(dts, &mut scribe);
-    _ = eval(tree, node_labels, &loader, &mut scribe);
-    let err = scribe.collect().err().unwrap();
-    assert!(err.to_string().contains("property reference cycle detected"));
+    for source in [
+        include_str!("testdata/property_references_cycle.dts"),
+        include_str!("testdata/property_references_cycle_rel.dts")
+    ] {
+        let loader = crate::fs::DummyLoader;
+        let arena = crate::Arena::new();
+        let dts = crate::parse::parse_typed(source, &arena).unwrap();
+        let mut scribe = Scribe::new(true);
+        let (tree, node_labels, _, _) = crate::merge::merge(dts, &mut scribe);
+        _ = eval(tree, node_labels, &loader, &mut scribe);
+        let err = scribe.collect().err().unwrap();
+        assert!(err.to_string().contains("property reference cycle detected"));
+    }
 }
 
 #[test]

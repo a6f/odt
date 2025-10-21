@@ -1,6 +1,3 @@
-use std::collections::HashSet;
-use std::sync::Mutex;
-
 use crate::error::SourceError;
 use crate::node::Node;
 use crate::parse::TypedRuleExt;
@@ -57,12 +54,11 @@ impl<P> LabelResolver<'_, P> {
         Some(result)
     }
 
-    pub(crate) fn prop_from_prop_ref(
+    pub(crate) fn prop_from_prop_ref<'a>(
         &self,
         relative_to: &NodePath,
-        propref: &PropertyReference,
-        visited: &Mutex<HashSet<CycleDetectionKey>>,
-    ) -> Result<(&P, CycleDetectionKey), SourceError> {
+        propref: &'a PropertyReference,
+    ) -> Result<(NodePath, &'a str, &P), SourceError> {
         // root.walk() expects all segments to be Node elements, so strip off
         // the property name after the last '/'.
         let noderef = propref.str().rsplit_once('/').map(|(a, _)| a).unwrap_or("");
@@ -84,17 +80,6 @@ impl<P> LabelResolver<'_, P> {
             .get_property(propname)
             .ok_or_else(|| propref.err("no such property"))?;
 
-        // Detect cycles
-        let mut visited = visited.lock().unwrap();
-        let key = CycleDetectionKey {
-            nodepath,
-            propname: propname.to_string(),
-        };
-        if visited.contains(&key) {
-            return Err(propref.err("property reference cycle detected"));
-        }
-        visited.insert(key.clone());
-
-        Ok((prop, key))
+        Ok((nodepath, propname, prop))
     }
 }
