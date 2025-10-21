@@ -274,12 +274,8 @@ fn eval_property_reference(
         nodepath,
         propname: propname.to_string(),
     };
-    {
-        let mut visited = visited.lock().unwrap();
-        if visited.contains(&key) {
-            return Err(propref.err("property reference cycle detected"));
-        }
-        visited.insert(key.clone());
+    if !visited.lock().unwrap().insert(key.clone()) {
+        return Err(propref.err("property reference cycle detected"));
     }
 
     let Some(propvalue) = (*prop).prop_value else {
