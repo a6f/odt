@@ -680,6 +680,8 @@ impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for U
 
                 let bytes = lookup(x)?;
                 match bytes.len() {
+                    1 => Ok(bytes[0] as u64),
+                    2 => Ok(u16::from_be_bytes(bytes.try_into().unwrap()) as u64),
                     4 => Ok(u32::from_be_bytes(bytes.try_into().unwrap()) as u64),
                     8 => Ok(u64::from_be_bytes(bytes.try_into().unwrap())),
                     n => Err(x.err(format!(
