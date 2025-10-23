@@ -259,9 +259,9 @@ fn visit_node_phandles<P>(
     }
 }
 
-fn eval_property_reference<'a>(
+fn eval_property_reference(
     loc: &NodePath,
-    labels: &LabelResolver<&'a Prop>,
+    labels: &LabelResolver<&Prop>,
     phandles: &LinkedHashMap<NodePath, u32>,
     read_file: &impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
     propref: &PropertyReference,
@@ -270,12 +270,12 @@ fn eval_property_reference<'a>(
     let (nodepath, prop) = labels.prop_from_prop_ref(loc, propref)?;
 
     // Detect cycles
-    let key = core::ptr::addr_of!(*prop) as usize;
-    if !visited.borrow_mut().insert(key.clone()) {
+    let key = &raw const *prop as usize;
+    if !visited.borrow_mut().insert(key) {
         return Err(propref.err("property reference cycle detected"));
     }
 
-    let Some(propvalue) = (*prop).prop_value else {
+    let Some(propvalue) = prop.prop_value else {
         return Ok(vec![]);
     };
 
