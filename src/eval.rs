@@ -12,7 +12,7 @@ use hashlink::{LinkedHashMap, LinkedHashSet};
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::cell::RefCell;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct CycleDetectionKey {
@@ -271,7 +271,7 @@ fn eval_property_reference(
     phandles: &LinkedHashMap<NodePath, u32>,
     read_file: &impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
     propref: &PropertyReference,
-    visited: &Mutex<HashSet<CycleDetectionKey>>,
+    visited: &RefCell<HashSet<CycleDetectionKey>>,
 ) -> Result<Vec<u8>, SourceError> {
     let (nodepath, propname, prop) = labels.prop_from_prop_ref(loc, propref)?;
 
@@ -280,7 +280,7 @@ fn eval_property_reference(
         nodepath,
         propname: propname.to_string(),
     };
-    if !visited.lock().unwrap().insert(key.clone()) {
+    if !visited.borrow_mut().insert(key.clone()) {
         return Err(propref.err("property reference cycle detected"));
     }
 
@@ -305,7 +305,7 @@ fn eval_property_reference(
     );
 
     // Remove the visited key from the set now that we're done evaluating it
-    visited.lock().unwrap().remove(&key);
+    visited.borrow_mut().remove(&key);
 
     result
 }
@@ -328,7 +328,7 @@ fn evaluate_expressions(
                 Ok(*phandles.get(&labels.resolve(loc, noderef)?).unwrap())
             };
             let lookup_prop = |propref: &PropertyReference| {
-                eval_property_reference(loc, labels, phandles, &read_file, propref, &Mutex::new(HashSet::new()))
+                eval_property_reference(loc, labels, phandles, &read_file, propref, &RefCell::new(HashSet::new()))
             };
             match evaluate_propvalue(
                 propvalue,
