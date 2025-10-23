@@ -14,12 +14,6 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::cell::RefCell;
 
-#[derive(Clone, PartialEq, Eq, Hash)]
-struct CycleDetectionKey {
-    pub nodepath: NodePath,
-    pub propname: String,
-}
-
 /// Assigns phandles and evaluates expressions.
 /// Call with the output of `crate::merge::merge()` or `resolve_incbin_paths()`.
 pub fn eval(
@@ -265,21 +259,18 @@ fn visit_node_phandles<P>(
     }
 }
 
-fn eval_property_reference(
+fn eval_property_reference<'a>(
     loc: &NodePath,
-    labels: &LabelResolver<&Prop>,
+    labels: &LabelResolver<&'a Prop>,
     phandles: &LinkedHashMap<NodePath, u32>,
     read_file: &impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
     propref: &PropertyReference,
-    visited: &RefCell<HashSet<CycleDetectionKey>>,
+    visited: &RefCell<HashSet<usize>>,
 ) -> Result<Vec<u8>, SourceError> {
-    let (nodepath, propname, prop) = labels.prop_from_prop_ref(loc, propref)?;
+    let (nodepath, prop) = labels.prop_from_prop_ref(loc, propref)?;
 
     // Detect cycles
-    let key = CycleDetectionKey {
-        nodepath,
-        propname: propname.to_string(),
-    };
+    let key = core::ptr::addr_of!(*prop) as usize;
     if !visited.borrow_mut().insert(key.clone()) {
         return Err(propref.err("property reference cycle detected"));
     }
@@ -289,11 +280,11 @@ fn eval_property_reference(
     };
 
     // Reuse the lookup rules from `evaluate_expressions`
-    let lookup_label = |nr: &NodeReference| labels.resolve(&key.nodepath, nr);
-    let lookup_phandle = |nr: &NodeReference| Ok(*phandles.get(&labels.resolve(&key.nodepath, nr)?).unwrap());
+    let lookup_label = |nr: &NodeReference| labels.resolve(&nodepath, nr);
+    let lookup_phandle = |nr: &NodeReference| Ok(*phandles.get(&labels.resolve(&nodepath, nr)?).unwrap());
     let lookup_property = |pr: &PropertyReference| {
         // Recurse to resolve nested property references
-        eval_property_reference(&key.nodepath, labels, phandles, read_file, pr, visited)
+        eval_property_reference(&nodepath, labels, phandles, read_file, pr, visited)
     };
 
     let result = evaluate_propvalue(

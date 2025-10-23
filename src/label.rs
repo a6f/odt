@@ -48,11 +48,11 @@ impl<P> LabelResolver<'_, P> {
         Some(result)
     }
 
-    pub(crate) fn prop_from_prop_ref<'a>(
+    pub(crate) fn prop_from_prop_ref(
         &self,
         relative_to: &NodePath,
-        propref: &'a PropertyReference,
-    ) -> Result<(NodePath, &'a str, &P), SourceError> {
+        propref: &PropertyReference,
+    ) -> Result<(NodePath, &P), SourceError> {
         // root.walk() expects all segments to be Node elements, so strip off
         // the property name after the last '/'.
         let noderef = propref.str().rsplit_once('/').map(|(a, _)| a).unwrap_or(".");
@@ -74,6 +74,6 @@ impl<P> LabelResolver<'_, P> {
             .get_property(propname)
             .ok_or_else(|| propref.err("no such property"))?;
 
-        Ok((nodepath, propname, prop))
+        Ok((nodepath, prop))
     }
 }
