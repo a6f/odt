@@ -5,12 +5,6 @@ use crate::parse::rules::{NodeReference, PropertyReference};
 use crate::path::NodePath;
 use hashlink::LinkedHashMap;
 
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct CycleDetectionKey {
-    pub nodepath: NodePath,
-    pub propname: String,
-}
-
 pub type LabelMap = LinkedHashMap<String, NodePath>;
 
 pub struct LabelResolver<'a, P>(pub &'a LabelMap, pub &'a Node<P>);

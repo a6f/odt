@@ -2,7 +2,7 @@
 
 use crate::error::{Scribe, SourceError};
 use crate::fs::Loader;
-use crate::label::{LabelMap, LabelResolver, CycleDetectionKey};
+use crate::label::{LabelMap, LabelResolver};
 use crate::parse::rules::*;
 use crate::parse::{SpanExt, TypedRuleExt, parse_quoted_string};
 use crate::path::NodePath;
@@ -13,6 +13,12 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct CycleDetectionKey {
+    pub nodepath: NodePath,
+    pub propname: String,
+}
 
 /// Assigns phandles and evaluates expressions.
 /// Call with the output of `crate::merge::merge()` or `resolve_incbin_paths()`.
