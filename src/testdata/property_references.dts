@@ -7,6 +7,11 @@
     u8_cell  = /bits/  8 <1>;
     empty_prop;
 
+    // Expressions don't depend on evaluation order
+    c = <( ${a} + ${b} )>;
+    a = <100>;
+    b = <200>;
+
     check {
         label_foo: foo {
             u32_prop = <0 1>, <0 1>;
@@ -38,5 +43,9 @@
         u8expr_test  = /bits/  8 <( ${/u8_cell} )>,  /bits/  8 <(1)>;
 
         empty_prop_ref = ${/empty_prop};
+
+        expr_ref_test0 = <( ${/c} + ${/a} )>, <400>;
+        expr_ref_test1 = <( ${/a} * 20 )>, <2000>;
+        expr_ref_test2 = <( ${/a} - 10 + ${/c} )>, <390>;
     };
 };

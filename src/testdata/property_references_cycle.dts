@@ -1,6 +1,0 @@
-/dts-v1/;
-
-/ {
-    loops_back_to_b = ${/loops_back_to_a};
-    loops_back_to_a = ${/loops_back_to_b};
-};

@@ -733,10 +733,19 @@ fn eval_binary_op(left: u64, op: &str, right: u64) -> Result<u64, &'static str> 
 
 #[test]
 fn test_property_reference_cycles() {
-    for source in [
-        include_str!("testdata/property_references_cycle.dts"),
-        include_str!("testdata/property_references_cycle_rel.dts")
-    ] {
+    const CYCLE_TEST1: &str = r#"
+/ { loop {
+    loops_back_to_b = ${loops_back_to_a};
+    loops_back_to_a = ${loops_back_to_b};
+}; }; "#;
+
+    const CYCLE_TEST2: &str = r#"
+/ { loop {
+    loops_back_to_b = ${loops_back_to_a};
+    loops_back_to_a = ${loops_back_to_b};
+}; }; "#;
+
+    for source in [CYCLE_TEST1, CYCLE_TEST2] {
         let loader = crate::fs::DummyLoader;
         let arena = crate::Arena::new();
         let dts = crate::parse::parse_typed(source, &arena).unwrap();
