@@ -121,4 +121,8 @@ impl<'a> LineTableCache<'a> {
     pub fn start_line_col(&self, span: &pest::Span<'a>) -> (usize, usize) {
         self.get(span.get_input()).line_col_at(span.start())
     }
+
+    pub fn end_line_col(&self, span: &pest::Span<'a>) -> (usize, usize) {
+        self.get(span.get_input()).line_col_at(span.end())
+    }
 }
