@@ -128,9 +128,9 @@ pub fn merge<'i>(
                         if path.is_root() {
                             root = SourceNode::default();
                         } else {
-                            let (parent, child) = (path.parent(), path.leaf());
-                            let parent = root.walk_mut(parent.segments()).unwrap();
-                            parent.remove_child(child);
+                            // let (parent, child) = (path.parent(), path.leaf());
+                            // let parent = root.walk_mut(parent.segments()).unwrap();
+                            // parent.remove_child(child);
                         }
                     }
                     Err(e) => scribe.err(e),
@@ -199,13 +199,13 @@ fn fill_source_node<'o, 'i: 'o>(
             }
             PropDef::DelProp(delprop) => {
                 let name = delprop.prop_name.unescape_name();
-                names_used.remove(name);
+                // names_used.remove(name);
                 if node.get_property(name).is_some() {
                     prop_changes
                         .entry(path.join(name))
                         .or_default()
                         .push(PropChange::DelProp(delprop));
-                    node.remove_property(name);
+                    // node.remove_property(name);
                 }
             }
         }
@@ -251,7 +251,7 @@ fn fill_source_node<'o, 'i: 'o>(
                         PropChange::DelNode(delnode),
                     );
                 }
-                node.remove_child(name);
+                // node.remove_child(name);
                 // TODO:  This is potentially quadratic.  Could use the labels in the removed node.
                 node_labels.retain(|_, p| !p.starts_with(&childpath));
             }
