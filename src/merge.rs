@@ -64,6 +64,23 @@ pub fn merge<'i>(
     dts: &Dts<'i>,
     scribe: &mut Scribe,
 ) -> (SourceNode<'i>, LabelMap, NodeChanges<'i>, PropChanges<'i>) {
+    merge_impl(dts, scribe, false)
+}
+
+/// Like [`merge`], but delete operations are recorded in `NodeChanges`/`PropChanges` without
+/// actually removing nodes or properties from the returned tree.
+pub fn merge_keep_deleted<'i>(
+    dts: &Dts<'i>,
+    scribe: &mut Scribe,
+) -> (SourceNode<'i>, LabelMap, NodeChanges<'i>, PropChanges<'i>) {
+    merge_impl(dts, scribe, true)
+}
+
+fn merge_impl<'i>(
+    dts: &Dts<'i>,
+    scribe: &mut Scribe,
+    keep_deleted: bool,
+) -> (SourceNode<'i>, LabelMap, NodeChanges<'i>, PropChanges<'i>) {
     let mut root = SourceNode::default();
     let mut node_labels = LabelMap::new();
     let mut node_changes = NodeChanges::new();
@@ -107,6 +124,7 @@ pub fn merge<'i>(
                     &path,
                     body,
                     scribe,
+                    keep_deleted,
                 );
             }
             TopDef::TopDelNode(topdelnode) => {
@@ -124,13 +142,15 @@ pub fn merge<'i>(
                             NodeChange::TopDelNode(topdelnode),
                             PropChange::TopDelNode(topdelnode),
                         );
-                        node_labels.retain(|_, p| !p.starts_with(&path));
-                        if path.is_root() {
-                            root = SourceNode::default();
-                        } else {
-                            // let (parent, child) = (path.parent(), path.leaf());
-                            // let parent = root.walk_mut(parent.segments()).unwrap();
-                            // parent.remove_child(child);
+                        if !keep_deleted {
+                            node_labels.retain(|_, p| !p.starts_with(&path));
+                            if path.is_root() {
+                                root = SourceNode::default();
+                            } else {
+                                let (parent, child) = (path.parent(), path.leaf());
+                                let parent = root.walk_mut(parent.segments()).unwrap();
+                                parent.remove_child(child);
+                            }
                         }
                     }
                     Err(e) => scribe.err(e),
@@ -179,6 +199,7 @@ fn fill_source_node<'o, 'i: 'o>(
     path: &NodePath,
     body: &'i NodeBody<'i>,
     scribe: &mut Scribe,
+    keep_deleted: bool,
 ) {
     let mut names_used = std::collections::HashSet::new();
     for prop_def in body.node_contents.prop_def {
@@ -199,13 +220,15 @@ fn fill_source_node<'o, 'i: 'o>(
             }
             PropDef::DelProp(delprop) => {
                 let name = delprop.prop_name.unescape_name();
-                // names_used.remove(name);
+                names_used.remove(name);
                 if node.get_property(name).is_some() {
                     prop_changes
                         .entry(path.join(name))
                         .or_default()
                         .push(PropChange::DelProp(delprop));
-                    // node.remove_property(name);
+                    if !keep_deleted {
+                        node.remove_property(name);
+                    }
                 }
             }
         }
@@ -236,6 +259,7 @@ fn fill_source_node<'o, 'i: 'o>(
                     &child_path,
                     body,
                     scribe,
+                    keep_deleted,
                 );
             }
             ChildDef::DelNode(delnode) => {
@@ -251,9 +275,11 @@ fn fill_source_node<'o, 'i: 'o>(
                         PropChange::DelNode(delnode),
                     );
                 }
-                // node.remove_child(name);
-                // TODO:  This is potentially quadratic.  Could use the labels in the removed node.
-                node_labels.retain(|_, p| !p.starts_with(&childpath));
+                if !keep_deleted {
+                    node.remove_child(name);
+                    // TODO:  This is potentially quadratic.  Could use the labels in the removed node.
+                    node_labels.retain(|_, p| !p.starts_with(&childpath));
+                }
             }
         }
     }
