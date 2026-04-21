@@ -64,7 +64,7 @@ pub fn merge<'i>(
     dts: &Dts<'i>,
     scribe: &mut Scribe,
 ) -> (SourceNode<'i>, LabelMap, NodeChanges<'i>, PropChanges<'i>) {
-    merge_impl(dts, scribe, false)
+    merge_impl::<false>(dts, scribe)
 }
 
 /// Like [`merge`], but delete operations are recorded in `NodeChanges`/`PropChanges` without
@@ -73,13 +73,12 @@ pub fn merge_keep_deleted<'i>(
     dts: &Dts<'i>,
     scribe: &mut Scribe,
 ) -> (SourceNode<'i>, LabelMap, NodeChanges<'i>, PropChanges<'i>) {
-    merge_impl(dts, scribe, true)
+    merge_impl::<true>(dts, scribe)
 }
 
-fn merge_impl<'i>(
+fn merge_impl<'i, const KEEP_DELETED: bool>(
     dts: &Dts<'i>,
     scribe: &mut Scribe,
-    keep_deleted: bool,
 ) -> (SourceNode<'i>, LabelMap, NodeChanges<'i>, PropChanges<'i>) {
     let mut root = SourceNode::default();
     let mut node_labels = LabelMap::new();
@@ -116,7 +115,7 @@ fn merge_impl<'i>(
                     }
                 }
                 let body = topnode.node_body;
-                fill_source_node(
+                fill_source_node::<KEEP_DELETED>(
                     &mut node_labels,
                     &mut node_changes,
                     &mut prop_changes,
@@ -124,7 +123,6 @@ fn merge_impl<'i>(
                     &path,
                     body,
                     scribe,
-                    keep_deleted,
                 );
             }
             TopDef::TopDelNode(topdelnode) => {
@@ -142,7 +140,7 @@ fn merge_impl<'i>(
                             NodeChange::TopDelNode(topdelnode),
                             PropChange::TopDelNode(topdelnode),
                         );
-                        if !keep_deleted {
+                        if !KEEP_DELETED {
                             node_labels.retain(|_, p| !p.starts_with(&path));
                             if path.is_root() {
                                 root = SourceNode::default();
@@ -191,7 +189,7 @@ fn mark_deleted<'a>(
     }
 }
 
-fn fill_source_node<'o, 'i: 'o>(
+fn fill_source_node<'o, 'i: 'o, const KEEP_DELETED: bool>(
     node_labels: &mut LabelMap,
     node_changes: &mut NodeChanges<'o>,
     prop_changes: &mut PropChanges<'o>,
@@ -199,7 +197,6 @@ fn fill_source_node<'o, 'i: 'o>(
     path: &NodePath,
     body: &'i NodeBody<'i>,
     scribe: &mut Scribe,
-    keep_deleted: bool,
 ) {
     let mut names_used = std::collections::HashSet::new();
     for prop_def in body.node_contents.prop_def {
@@ -226,7 +223,7 @@ fn fill_source_node<'o, 'i: 'o>(
                         .entry(path.join(name))
                         .or_default()
                         .push(PropChange::DelProp(delprop));
-                    if !keep_deleted {
+                    if !KEEP_DELETED {
                         node.remove_property(name);
                     }
                 }
@@ -251,7 +248,7 @@ fn fill_source_node<'o, 'i: 'o>(
                     }
                 }
                 let body = childnode.node_body;
-                fill_source_node(
+                fill_source_node::<KEEP_DELETED>(
                     node_labels,
                     node_changes,
                     prop_changes,
@@ -259,7 +256,6 @@ fn fill_source_node<'o, 'i: 'o>(
                     &child_path,
                     body,
                     scribe,
-                    keep_deleted,
                 );
             }
             ChildDef::DelNode(delnode) => {
@@ -275,7 +271,7 @@ fn fill_source_node<'o, 'i: 'o>(
                         PropChange::DelNode(delnode),
                     );
                 }
-                if !keep_deleted {
+                if !KEEP_DELETED {
                     node.remove_child(name);
                     // TODO:  This is potentially quadratic.  Could use the labels in the removed node.
                     node_labels.retain(|_, p| !p.starts_with(&childpath));
