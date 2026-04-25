@@ -750,7 +750,7 @@ fn test_property_reference_cycles() {
         let arena = crate::Arena::new();
         let dts = crate::parse::parse_typed(source, &arena).unwrap();
         let mut scribe = Scribe::new(true);
-        let (tree, node_labels, _, _) = crate::merge::merge(dts, &mut scribe);
+        let (tree, node_labels) = crate::merge::merge(dts, &mut scribe);
         _ = eval(tree, node_labels, &loader, &mut scribe);
         let err = scribe.collect().err().unwrap();
         assert!(err.to_string().contains("property reference cycle detected"));
@@ -772,7 +772,7 @@ fn test_eval() {
         let arena = crate::Arena::new();
         let dts = crate::parse::parse_typed(source, &arena).unwrap();
         let mut scribe = Scribe::new(true);
-        let (tree, node_labels, _, _) = crate::merge::merge(dts, &mut scribe);
+        let (tree, node_labels) = crate::merge::merge(dts, &mut scribe);
         let tree = eval(tree, node_labels, &loader, &mut scribe);
         assert!(scribe.report(&loader, &mut std::io::stderr()));
         let check = tree.get_child("check").unwrap_or(&tree);

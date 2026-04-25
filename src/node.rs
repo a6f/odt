@@ -35,6 +35,17 @@ impl<P> Node<P> {
         }
     }
 
+    pub fn walk_insert<'a, 'b>(
+        &'a mut self,
+        path: impl IntoIterator<Item = &'b str>,
+    ) -> &'a mut Node<P> {
+        let mut path = path.into_iter();
+        match path.next() {
+            None | Some("") => self,
+            Some(segment) => self.add_child(segment).walk_insert(path),
+        }
+    }
+
     pub fn add_child(&mut self, name: &str) -> &mut Node<P> {
         // Avoid `Entry::or_insert_with()` because on LinkedHashMap that reorders existing entries.
         match self.children.entry(name.into()) {
@@ -51,8 +62,8 @@ impl<P> Node<P> {
         self.children.get(name)
     }
 
-    pub fn remove_child(&mut self, name: &str) {
-        self.children.remove(name);
+    pub fn remove_child(&mut self, name: &str) -> Option<Node<P>> {
+        self.children.remove(name)
     }
 
     pub fn get_property(&self, name: &str) -> Option<&P> {
@@ -93,6 +104,21 @@ impl<P> Node<P> {
 
     pub fn labels_as_display(&self) -> LabelsDisplay<'_> {
         LabelsDisplay(&self.labels)
+    }
+
+    pub fn visit_preorder_mut(&mut self, f: &mut impl FnMut(&mut Self)) {
+        f(self);
+        for (_, child) in self.children.iter_mut() {
+            child.visit_preorder_mut(f);
+        }
+    }
+
+    pub fn iter_preorder(&self, loc: NodePath) -> NodeIter<P> {
+        NodeIter {
+            path: loc,
+            first: Some(self),
+            stack: vec![],
+        }
     }
 
     pub fn map_values<T>(self, f: &mut impl FnMut(P) -> T) -> Node<T> {
@@ -164,6 +190,39 @@ impl<P> Default for Node<P> {
             properties: Default::default(),
             children: Default::default(),
         }
+    }
+}
+
+pub struct NodeIter<'a, P> {
+    path: NodePath,
+    first: Option<&'a Node<P>>,
+    stack: Vec<hashlink::linked_hash_map::Iter<'a, String, Node<P>>>,
+}
+
+impl<'a, P> Iterator for NodeIter<'a, P> {
+    // The paths are constructed within the iterator, so they must be returned by value.
+    // LendingIterator could overcome this, but this class is just a convenience anyway.
+    type Item = (NodePath, &'a Node<P>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(root) = self.first.take() {
+            self.stack.push(root.children.iter());
+            return Some((self.path.clone(), root));
+        }
+        while !self.stack.is_empty() {
+            match self.stack.last_mut().unwrap().next() {
+                Some((name, node)) => {
+                    self.path.push(name);
+                    self.stack.push(node.children.iter());
+                    return Some((self.path.clone(), node));
+                }
+                None => {
+                    self.path.pop();
+                    self.stack.pop();
+                }
+            }
+        }
+        None
     }
 }
 
@@ -294,7 +353,7 @@ fn test_format() {
     let arena = crate::Arena::new();
     let dts = crate::parse::parse_typed(&source, &arena).unwrap();
     let mut scribe = crate::error::Scribe::new(true);
-    let (tree, node_labels, _, _) = crate::merge::merge(dts, &mut scribe);
+    let (tree, node_labels) = crate::merge::merge(dts, &mut scribe);
     let tree = crate::eval::eval(tree, node_labels, &loader, &mut scribe);
     assert!(scribe.report(&loader, &mut std::io::stderr()));
     assert!(tree.children.is_empty());

@@ -1,4 +1,5 @@
 use core::fmt::{Debug, Display, Formatter};
+use core::ops::Bound;
 
 /// A portable subset of PathBuf for working with &{...} DTS path references.
 /// Slashes are replaced with nulls, making the inherited `impl Ord` sort parents before children.
@@ -36,6 +37,12 @@ impl NodePath {
         Self(self.0[..self.0.len() - 1 - self.leaf().len()].into())
     }
 
+    pub fn pop(&mut self) {
+        if !self.is_root() {
+            self.0.truncate(self.0.len() - 1 - self.leaf().len());
+        }
+    }
+
     pub fn push(&mut self, suffix: &str) {
         for segment in suffix.split('/').filter(|s| !s.is_empty()) {
             self.0.push_str(segment);
@@ -53,6 +60,14 @@ impl NodePath {
 
     pub fn starts_with(&self, prefix: &Self) -> bool {
         self.0.starts_with(&prefix.0)
+    }
+
+    pub fn descendants_end(&self) -> Bound<Self> {
+        if self.is_root() {
+            Bound::Unbounded
+        } else {
+            Bound::Excluded(Self(self.0[..self.0.len() - 1].to_string() + "\x01\x00"))
+        }
     }
 }
 

@@ -1,9 +1,11 @@
+#![allow(deprecated)]
+
 use clap::Parser as _;
 use odt::Arena;
 use odt::error::Scribe;
 use odt::fs::{Loader, LocalFileLoader};
 use odt::line::LineTableCache;
-use odt::merge::{NodeChange, PropChange, merge};
+use odt::merge::{NodeChange, PropChange, merge4};
 use odt::parse::parse_with_includes;
 use pest::Span;
 use std::path::PathBuf;
@@ -26,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arena = Arena::new();
     let mut scribe = Scribe::new(false);
     let dts = parse_with_includes(&loader, &arena, &input, &mut scribe);
-    let (_tree, node_labels, node_changes, prop_changes) = merge(&dts, &mut scribe);
+    let (_tree, node_labels, node_changes, prop_changes) = merge4(&dts, &mut scribe);
     _ = scribe.report(&loader, &mut std::io::stderr()); // print errors but continue
 
     // show all source files used

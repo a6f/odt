@@ -21,7 +21,7 @@ pub fn compile(
     scribe: &mut error::Scribe,
 ) -> BinaryNode {
     let dts = parse::parse_concat_with_includes(loader, arena, dts_paths, scribe);
-    let (tree, node_labels, _, _) = merge::merge(&dts, scribe);
+    let (tree, node_labels) = merge::merge(&dts, scribe);
     let tree = eval::resolve_incbin_paths(loader, arena, tree, scribe);
     eval::eval(tree, node_labels, loader, scribe)
 }
