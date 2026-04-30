@@ -224,3 +224,32 @@ impl Loader for LocalFileLoader {
         None
     }
 }
+
+/// A loader that simply returns the only file that it knows of
+/// from RAM.
+pub struct MemoryLoader<'a>(&'a [u8]);
+
+impl<'a> MemoryLoader<'a> {
+    pub fn new(dts: &'a [u8]) -> MemoryLoader<'a> {
+        MemoryLoader(dts)
+    }
+}
+
+#[allow(unused_variables)]
+impl<'a> Loader for MemoryLoader<'a> {
+    fn find(&self, relative_to: &Path, included_path: &Path) -> Option<(&Path, &[u8])> {
+        None
+    }
+    fn read(&self, path: PathBuf) -> Option<(&Path, &[u8])> {
+        Some((Path::new(""), &self.0))
+    }
+    fn positive_deps(&self) -> Vec<PathBuf> {
+        vec![]
+    }
+    fn negative_deps(&self) -> Vec<PathBuf> {
+        vec![]
+    }
+    fn path_of_buffer(&self, mem: Range<*const u8>) -> Option<PathBuf> {
+        None
+    }
+}
