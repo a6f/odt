@@ -100,7 +100,7 @@ fn dts_input(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let mut scribe = odt::error::Scribe::new(args.treat_warnings_as_errors);
     let bytes = match args.out_format {
         Format::Dtb => {
-            let mut tree = odt::compile(&loader, &arena, &[&input], &mut scribe);
+            let mut tree = odt::compile(&loader, &[&input], &mut scribe);
             if args.sort {
                 tree.sort();
             }
@@ -135,7 +135,7 @@ fn dts_input(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         Format::Dtv => {
             // Lower all the way to binary node values, then convert back into source.
             // Types are lost in this process.
-            let mut tree = odt::compile(&loader, &arena, &[&input], &mut scribe);
+            let mut tree = odt::compile(&loader, &[&input], &mut scribe);
             if args.sort {
                 tree.sort();
             }
