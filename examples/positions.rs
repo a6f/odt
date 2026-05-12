@@ -1,13 +1,14 @@
-#![allow(deprecated)]
-
 use clap::Parser as _;
-use odt::Arena;
 use odt::error::Scribe;
 use odt::fs::{Loader, LocalFileLoader};
 use odt::line::LineTableCache;
-use odt::merge::{NodeChange, PropChange, merge4};
+use odt::merge::{MergeEvent, merge_with_events};
 use odt::parse::parse_with_includes;
+use odt::parse::rules::{Prop, TypedRule};
+use odt::path::NodePath;
+use odt::{Arena, SourceNode};
 use pest::Span;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 #[derive(clap::Parser)]
@@ -28,7 +29,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arena = Arena::new();
     let mut scribe = Scribe::new(false);
     let dts = parse_with_includes(&loader, &arena, &input, &mut scribe);
-    let (_tree, node_labels, node_changes, prop_changes) = merge4(&dts, &mut scribe);
+    let mut last_map = BTreeMap::<NodePath, &Prop>::new();
+    let mut last_tree = SourceNode::default();
+    let (_tree, node_labels) = merge_with_events(&dts, &mut scribe, &mut |e| {
+        // println!("processing {e:?}");
+        match e {
+            MergeEvent::AddNode { path, .. } => {
+                last_tree.walk_insert(path.segments());
+            }
+            MergeEvent::AddProp { path, name, prop } => {
+                last_map.insert(path.join(name), prop);
+                last_tree
+                    .walk_insert(path.segments())
+                    .set_property(name, prop);
+            }
+            _ => {}
+        }
+    });
     _ = scribe.report(&loader, &mut std::io::stderr()); // print errors but continue
 
     // show all source files used
@@ -59,52 +76,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (path, line, col)
     }
 
-    // show locations of all nodes
-    for (path, history) in node_changes {
-        println!("history of node {path}:");
-        let mut exists = false;
-        for change in history {
-            let verb = match change {
-                NodeChange::TopDelNode(_) | NodeChange::DelNode(_) => {
-                    exists = false;
-                    "deleted"
-                }
-                _ => {
-                    if exists {
-                        "updated"
-                    } else {
-                        exists = true;
-                        "created"
-                    }
-                }
-            };
-            let (file, line, col) = source_location(&loader, &ltc, change.span());
-            println!("  {verb} at {}:{line}:{col}", file.display());
-        }
-        println!();
+    // show locations of all properties via last_map
+    println!("properties:");
+    for (path, prop) in last_map {
+        let (file, line, col) = source_location(&loader, &ltc, prop.span());
+        println!("  {path} defined at {}:{line}:{col}", file.display());
     }
+    println!();
 
-    // show locations of all properties
-    for (path, history) in prop_changes {
-        println!("history of property {path}:");
-        let mut exists = false;
-        for change in history {
-            let verb = match change {
-                PropChange::DelProp(_) | PropChange::TopDelNode(_) | PropChange::DelNode(_) => {
-                    exists = false;
-                    "deleted"
-                }
-                _ => {
-                    if exists {
-                        "updated"
-                    } else {
-                        exists = true;
-                        "created"
-                    }
-                }
-            };
-            let (file, line, col) = source_location(&loader, &ltc, change.span());
-            println!("  {verb} at {}:{line}:{col}", file.display());
+    // show locations of all properties via last_tree
+    println!("properties by node:");
+    for (path, node) in last_tree.iter_preorder(NodePath::root()) {
+        println!("  {path}:");
+        for (name, prop) in node.properties() {
+            let (file, line, col) = source_location(&loader, &ltc, prop.span());
+            println!("    {name} defined at {}:{line}:{col}", file.display());
         }
         println!();
     }
