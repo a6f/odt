@@ -45,8 +45,8 @@ pub fn compile_result(
 /// Only the first compilation error is reported.
 pub fn compile_inmemory(source: &str) -> Result<BinaryNode, error::SourceError> {
     let arena = Arena::new();
-    let mut scribe = error::Scribe::new(false);
     let dts = parse::parse_typed(source, &arena)?;
+    let mut scribe = error::Scribe::new(false);
     let (tree, node_labels) = merge::merge(dts, &mut scribe);
     let r = eval::eval(tree, node_labels, &fs::DummyLoader, &mut scribe);
     scribe.collect().map(|_| r)
