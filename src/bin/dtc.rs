@@ -1,6 +1,6 @@
 use clap::Parser as _;
 use odt::parse::TypedRuleExt;
-use odt::parse::rules::TopDef;
+use odt::parse::rules::{TopDef, TypedRule};
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
@@ -109,15 +109,7 @@ fn dts_input(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         Format::Dti => {
             // This shows the tree after /include/ directives are processed.
             let dts = odt::parse::parse_with_includes(&loader, &arena, &input, &mut scribe);
-            let mut output = String::new();
-            for top_def in dts.top_def {
-                if let TopDef::Include(_) = top_def {
-                    output.push_str("// ");
-                }
-                output.push_str(top_def.str());
-                output.push('\n');
-            }
-            output.into_bytes()
+            dti_output(&dts).into_bytes()
         }
         Format::Dts => {
             // This shows the tree after /include/ directives and merge operations,
@@ -160,6 +152,40 @@ fn dts_input(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+fn dti_output(dts: &odt::parse::rules::Dts) -> String {
+    // Comments and whitespace between top-level definitions are not part of any
+    // `TopDef`, so copy the source text separating each definition from the
+    // previous one, too.
+    // Also, since `/include/` expansion mixes definitions from several files into
+    // one sequence, keep a separate "emitted" position for each source string.
+    let mut emitted = std::collections::HashMap::<*const u8, usize>::new();
+    let mut output = String::new();
+    let mut last = None;
+    for top_def in dts.top_def {
+        let span = top_def.span();
+        let src = span.get_input();
+        let pos = emitted.get(&src.as_ptr()).copied().unwrap_or(0);
+        if pos <= span.start() {
+            // Copy the source text between the last definition and this one.
+            output.push_str(&src[pos..span.start()]);
+        }
+        if let TopDef::Include(_) = top_def {
+            output.push_str("// ");
+            output.push_str(top_def.str());
+            output.push('\n');
+        } else {
+            output.push_str(top_def.str());
+        }
+        emitted.insert(src.as_ptr(), span.end());
+        last = Some(span);
+    }
+    // Copy the source text after the last definition, if any.
+    if let Some(span) = last {
+        output.push_str(&span.get_input()[span.end()..]);
+    }
+    output
+}
+
 fn open_output(
     out: Option<PathBuf>,
 ) -> Result<(String, Box<dyn Write>), Box<dyn std::error::Error>> {
@@ -170,4 +196,12 @@ fn open_output(
         ),
         None => ("-".into(), Box::new(BufWriter::new(std::io::stdout()))),
     })
+}
+
+#[test]
+fn test_dti_keeps_comments() {
+    let source = "// before\n/dts-v1/;\n// after\n/ {\n};\n// trailing\n";
+    let arena = odt::Arena::new();
+    let dts = odt::parse::parse_typed(source, &arena).unwrap();
+    assert_eq!(dti_output(dts), source);
 }
