@@ -129,7 +129,7 @@ LabelOrCell = { Label | Cell }
 OpenCells = { "<" }
 CloseCells = { ">" }
 
-Cell = { NodeReference | PropertyReference | ParenExpr | IntLiteral }
+Cell = { NodeReference | PropertyReference | ParenExpr | FloatLiteral | IntLiteral }
 
 ParenExpr = { OpenParen ~ Expr ~ CloseParen }
 Expr = { TernaryPrec }
@@ -184,6 +184,10 @@ LessThan = { "<" }
 GreaterThan = { ">" }
 Equal = { "==" }
 NotEqual = { "!=" }
+
+// DIFF: dtc has no floating-point support.  Cells accept <a.b>-style literals,
+//       encoded as IEEE 754 (binary32 by default, binary64 with /bits/ 64).
+FloatLiteral = @{ "-"? ~ ('0'..'9')+ ~ "." ~ ('0'..'9')+ ~ (^"e" ~ ("+" | "-")? ~ ('0'..'9')+)? }
 
 IntLiteral = ${ CharLiteral | NumericLiteral }
 
