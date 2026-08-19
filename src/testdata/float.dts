@@ -1,0 +1,14 @@
+/dts-v1/;
+
+/ {
+    check {
+        f32_simple   = <1.23 0x3f9d70a4>;
+        f32_zero     = <0.0 0x00000000>;
+        f32_negative = <-0.5 0xbf000000>;
+        f32_exponent = <2.5e3 0x451c4000>;
+        f32_exp_neg  = <1.5E-1 0x3e19999a>;
+        f32_mixed    = <1 2.0 1 0x40000000>;
+        f64_simple   = /bits/ 64 <1.23 0x3ff3ae147ae147ae>;
+        f64_negative = /bits/ 64 <-0.5 0xbfe0000000000000>;
+    };
+};
