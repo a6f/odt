@@ -17,4 +17,5 @@ binary literals
 terser syntax for 64-bit cells (for the mixed case of #address-cells = <2>; #size-cells = <1>;)
 typed phandle references
 in-band schemas
+allow division to produce rational values.  might need another division operator (perhaps U+00F7), or a warning when floor division would give a different result (expressions could use ~~ to truncate explicitly).
 

@@ -98,7 +98,7 @@ impl<P> Node<P> {
         self.labels.replace(name.into());
     }
 
-    pub fn labels(&mut self) -> impl Iterator<Item = &String> {
+    pub fn labels(&self) -> impl Iterator<Item = &String> {
         self.labels.iter()
     }
 
@@ -113,7 +113,7 @@ impl<P> Node<P> {
         }
     }
 
-    pub fn iter_preorder(&self, loc: NodePath) -> NodeIter<P> {
+    pub fn iter_preorder(&self, loc: NodePath) -> NodeIter<'_, P> {
         NodeIter {
             path: loc,
             first: Some(self),
@@ -355,6 +355,8 @@ fn test_format() {
     let mut scribe = crate::error::Scribe::new(true);
     let (tree, node_labels) = crate::merge::merge(dts, &mut scribe);
     let tree = crate::eval::eval(tree, node_labels, &loader, &mut scribe);
+    let tree = tree.map_values(&mut crate::tuple::into_dtb_repr);
+
     assert!(scribe.report(&loader, &mut std::io::stderr()));
     assert!(tree.children.is_empty());
     assert_eq!(tree.properties, node.properties);

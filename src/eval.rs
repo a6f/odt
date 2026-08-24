@@ -6,13 +6,14 @@ use crate::label::{LabelMap, LabelResolver};
 use crate::parse::rules::*;
 use crate::parse::{SpanExt, TypedRuleExt, parse_quoted_string};
 use crate::path::NodePath;
-use crate::{Arena, BinaryNode, SourceNode};
+use crate::tuple::{Tuple, TupleItem};
+use crate::{Arena, SourceNode, TupleNode};
 use core::str::CharIndices;
 use hashlink::{LinkedHashMap, LinkedHashSet};
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::cell::RefCell;
 
 /// Assigns phandles and evaluates expressions.
 /// Call with the output of `crate::merge::merge()` or `resolve_incbin_paths()`.
@@ -21,7 +22,7 @@ pub fn eval(
     node_labels: LabelMap,
     loader: &impl Loader,
     scribe: &mut Scribe,
-) -> BinaryNode {
+) -> TupleNode {
     let phandles = assign_phandles(&tree, &node_labels, scribe);
     let read_file = |path: &Path| match loader.read(path.to_owned()) {
         Some((_, data)) => Ok(data.to_vec()),
@@ -32,9 +33,19 @@ pub fn eval(
     let mut tree = evaluate_expressions(tree, &node_labels, &phandles, read_file, scribe);
     // poke assigned phandle values into the final tree
     for (path, phandle) in phandles {
-        tree.walk_mut(path.segments())
-            .unwrap()
-            .set_property("phandle", phandle.to_be_bytes().into());
+        tree.walk_mut(path.segments()).unwrap().set_property(
+            "phandle",
+            vec![
+                // Logically this should be
+                //   TupleItem::NodeReference { path, phandle: Some(phandle) }
+                // However, if the output is pretty-printed and reevaluated, that will result in a
+                // different phandle assignment order.  So for now we emit them as bare numbers.
+                TupleItem::Number {
+                    bits: 32,
+                    value: phandle.into(),
+                },
+            ],
+        );
     }
     tree
 }
@@ -215,7 +226,7 @@ fn node_phandle<P>(
             Err(propvalue.err("phandle expression cannot reference another phandle"))
         } else {
             phandle_is_self_reference.set(true);
-            Ok(0)
+            Ok((NodePath::root(), 0))
         }
     };
     let phandle = evaluate_propvalue(
@@ -226,15 +237,21 @@ fn node_phandle<P>(
         // dtc allows this, but there's no need for it.
         |_| Err(propvalue.err("phandle expression cannot use /incbin/")),
     )?;
-    let n = phandle.len();
-    if n != 4 {
-        return Err(propvalue.err(format!("phandles must be u32, got {n} bytes")));
+    let [phandle] = &phandle[..] else {
+        return Err(propvalue.err("phandle must be one cell"));
+    };
+    let phandle = match phandle {
+        TupleItem::Number { bits: 32, value } => *value as u32,
+        TupleItem::NodeReference {
+            phandle: Some(value),
+            ..
+        } => *value,
+        _ => return Err(propvalue.err("phandle must be u32")),
     };
     // `visit_phandle_references()` will find self-references, so we omit them.
     if phandle_is_self_reference.get() {
         return Ok(None);
     }
-    let phandle = u32::from_be_bytes(phandle.try_into().unwrap());
     if phandle == 0 || phandle == 0xffff_ffff {
         return Err(propvalue.err(format!("phandle has reserved value {phandle:#x}")));
     }
@@ -266,26 +283,34 @@ fn eval_property_reference(
     read_file: &impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
     propref: &PropertyReference,
     visited: &RefCell<HashSet<usize>>,
-) -> Result<Vec<u8>, SourceError> {
+) -> Result<TupleItem, SourceError> {
     let (nodepath, prop) = labels.prop_from_prop_ref(loc, propref)?;
+
+    // TODO:  It would be nice to report both spans relevant to these errors.
+    let Some(propvalue) = prop.prop_value else {
+        return Err(propref.err("reference to empty value"));
+    };
+    if propvalue.labeled_value.len() != 1 {
+        return Err(propref.err("reference to multiple values"));
+    };
+
+    // Reuse the lookup rules from `evaluate_expressions`
+    let lookup_label = |nr: &NodeReference| labels.resolve(&nodepath, nr);
+    let lookup_phandle = |nr: &NodeReference| {
+        let path = labels.resolve(&nodepath, nr)?;
+        let phandle = *phandles.get(&path).unwrap();
+        Ok((path, phandle))
+    };
+    let lookup_property = |pr: &PropertyReference| {
+        // Recurse to resolve nested property references
+        eval_property_reference(&nodepath, labels, phandles, read_file, pr, visited)
+    };
 
     // Detect cycles
     let key = &raw const *prop as usize;
     if !visited.borrow_mut().insert(key) {
         return Err(propref.err("property reference cycle detected"));
     }
-
-    let Some(propvalue) = prop.prop_value else {
-        return Ok(vec![]);
-    };
-
-    // Reuse the lookup rules from `evaluate_expressions`
-    let lookup_label = |nr: &NodeReference| labels.resolve(&nodepath, nr);
-    let lookup_phandle = |nr: &NodeReference| Ok(*phandles.get(&labels.resolve(&nodepath, nr)?).unwrap());
-    let lookup_property = |pr: &PropertyReference| {
-        // Recurse to resolve nested property references
-        eval_property_reference(&nodepath, labels, phandles, read_file, pr, visited)
-    };
 
     let result = evaluate_propvalue(
         propvalue,
@@ -298,7 +323,11 @@ fn eval_property_reference(
     // Remove the visited key from the set now that we're done evaluating it
     visited.borrow_mut().remove(&key);
 
-    result
+    let Ok([result]) = <_ as TryInto<[_; 1]>>::try_into(result?) else {
+        unreachable!("bug: evaluating a one-element propvalue produced multiple items!");
+    };
+
+    Ok(result)
 }
 
 fn evaluate_expressions(
@@ -307,7 +336,7 @@ fn evaluate_expressions(
     phandles: &PhandleMap,
     read_file: impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
     scribe: &mut Scribe,
-) -> BinaryNode {
+) -> TupleNode {
     let old = root.clone();
     let labels = &LabelResolver(node_labels, &old);
     let read_file = |p: &Path| read_file(p);
@@ -316,10 +345,19 @@ fn evaluate_expressions(
         Some(propvalue) => {
             let lookup_label = |noderef: &NodeReference| labels.resolve(loc, noderef);
             let lookup_phandle = |noderef: &NodeReference| {
-                Ok(*phandles.get(&labels.resolve(loc, noderef)?).unwrap())
+                let path = labels.resolve(loc, noderef)?;
+                let phandle = *phandles.get(&path).unwrap();
+                Ok((path, phandle))
             };
             let lookup_prop = |propref: &PropertyReference| {
-                eval_property_reference(loc, labels, phandles, &read_file, propref, &RefCell::new(HashSet::new()))
+                eval_property_reference(
+                    loc,
+                    labels,
+                    phandles,
+                    &read_file,
+                    propref,
+                    &RefCell::new(HashSet::new()),
+                )
             };
             match evaluate_propvalue(
                 propvalue,
@@ -331,9 +369,9 @@ fn evaluate_expressions(
                 Ok(v) => v,
                 Err(e) => {
                     scribe.err(e);
-                    // TODO:  Consider returning `node::Node<Result<Vec<u8>, SourceError>>`
-                    // instead of this in-band signaling.
-                    b"<ERROR>\0".to_vec()
+                    // TODO:  Consider returning `node::Node<Result<Tuple, SourceError>>`
+                    // or adding an error variant to TupleItem instead of this in-band signaling.
+                    vec![TupleItem::String("<ERROR>".into())]
                 }
             }
         }
@@ -346,10 +384,10 @@ fn evaluate_expressions(
 fn evaluate_propvalue(
     propvalue: &PropValue,
     lookup_label: impl Fn(&NodeReference) -> Result<NodePath, SourceError>,
-    lookup_phandle: impl Fn(&NodeReference) -> Result<u32, SourceError>,
-    lookup_property_fn: impl Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>,
+    lookup_phandle: impl Fn(&NodeReference) -> Result<(NodePath, u32), SourceError>,
+    lookup_property_fn: impl Fn(&PropertyReference) -> Result<TupleItem, SourceError>,
     read_file: impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
-) -> Result<Vec<u8>, SourceError> {
+) -> Result<Tuple, SourceError> {
     let mut r = vec![];
     let lookup_property = Some(&lookup_property_fn);
     for labeled_value in propvalue.labeled_value {
@@ -369,94 +407,83 @@ fn evaluate_propvalue(
                     let LabelOrCell::Cell(cell) = label_or_cell else {
                         continue;
                     };
-                    let n = match cell {
+                    let mut item = match cell {
                         Cell::NodeReference(noderef) => {
-                            let phandle = lookup_phandle(noderef)?;
+                            let (path, phandle) = lookup_phandle(noderef)?;
                             if bits != 32 {
                                 return Err(noderef.err("phandle references need /bits/ == 32"));
                             }
-                            phandle as u64
+                            let phandle = Some(phandle);
+                            TupleItem::NodeReference { path, phandle }
                         }
-                        Cell::PropertyReference(propref) => {
-                            let bytes = lookup_property_fn(propref)?;
-                            match bytes.len() {
-                                1 if bits == 8 => bytes[0] as u64,
-                                2 if bits == 16 => {
-                                    u16::from_be_bytes(bytes.try_into().unwrap()) as u64
-                                }
-                                4 if bits == 32 => {
-                                    u32::from_be_bytes(bytes.try_into().unwrap()) as u64
-                                }
-                                8 if bits == 64 => u64::from_be_bytes(bytes.try_into().unwrap()),
-                                n => {
-                                    return Err(propref.err(format!(
-                                        "unsupported property length {n} for /bits/ == {bits}"
-                                    )));
-                                }
+                        Cell::PropertyReference(propref) => lookup_property_fn(propref)?,
+                        Cell::ParenExpr(expr) => TupleItem::from_u64(expr.eval(lookup_property)?),
+                        Cell::IntLiteral(lit) => TupleItem::from_u64(lit.eval(lookup_property)?),
+                    };
+                    if let TupleItem::Number { value, .. } = item {
+                        if let Some(n) = item.as_u64()
+                            && bits < 64
+                        {
+                            // dtc warns if the lost bits are not all the same.
+                            // We might also want to warn if they are ones but the value looks positive.
+                            let sign_bits = (63 - bits) as u32;
+                            let sign_extended = ((n as i64) << sign_bits >> sign_bits) as u64;
+                            if n != sign_extended {
+                                let err = cell.err(format!("value exceeds {bits} bits"));
+                                let trunc = n & sign_extended;
+                                let tchars = 2 + bits as usize / 4;
+                                // TODO: Reporter interface for warnings.  Can't decorate span with file path
+                                // here, and these are printed even if a more severe error occurs later.
+                                eprintln!("Truncating value {n:#x} to {trunc:#0tchars$x}:\n{err}");
                             }
                         }
-                        Cell::ParenExpr(expr) => expr.eval(lookup_property)?,
-                        Cell::IntLiteral(lit) => lit.eval(lookup_property)?,
-                    };
-                    if bits < 64 {
-                        // dtc warns if the lost bits are not all the same.
-                        // We might also want to warn if they are ones but the value looks positive.
-                        let sign_bits = (63 - bits) as u32;
-                        let sign_extended = ((n as i64) << sign_bits >> sign_bits) as u64;
-                        if n != sign_extended {
-                            let err = cell.err(format!("value exceeds {bits} bits"));
-                            let trunc = n & sign_extended;
-                            let tchars = 2 + bits as usize / 4;
-                            // TODO: Reporter interface for warnings.  Can't decorate span with file path
-                            // here, and these are printed even if a more severe error occurs later.
-                            eprintln!("Truncating value {n:#x} to {trunc:#0tchars$x}:\n{err}");
-                        }
+                        // take bits from this cell list
+                        let bits = bits as u8;
+                        item = TupleItem::Number { bits, value };
                     }
-                    match bits {
-                        8 => r.push(n as u8),
-                        16 => r.extend((n as u16).to_be_bytes()),
-                        32 => r.extend((n as u32).to_be_bytes()),
-                        64 => r.extend(n.to_be_bytes()),
-                        _ => unreachable!(),
-                    }
+                    r.push(item);
                 }
             }
             Value::QuotedString(quotedstring) => {
-                let bytes = quotedstring.unescape()?;
-                r.extend(&*bytes);
-                r.push(0);
+                let bytes = quotedstring.unescape()?.into_owned();
+                match String::from_utf8(bytes) {
+                    Ok(string) => r.push(TupleItem::String(string)),
+                    Err(err) => {
+                        // Invalid as UTF-8.  Add back the trailing NUL and treat as bytes.
+                        let mut bytes = err.into_bytes();
+                        bytes.push(0);
+                        r.push(TupleItem::Bytes(bytes));
+                    }
+                }
             }
             Value::NodeReference(noderef) => {
-                let target = lookup_label(noderef)?;
-                r.extend(target.display().as_bytes());
-                r.push(0);
+                let path = lookup_label(noderef)?;
+                let phandle = None;
+                r.push(TupleItem::NodeReference { path, phandle });
             }
             Value::PropertyReference(propref) => {
                 let prop = lookup_property_fn(propref)?;
-                r.extend(prop);
+                r.push(prop);
             }
             Value::ByteString(bytestring) => {
+                let mut bytes = vec![];
                 for label_or_hex_byte in bytestring.label_or_hex_byte {
                     if let LabelOrHexByte::HexByte(hex_byte) = label_or_hex_byte {
                         let s = hex_byte.str();
-                        let b = u8::from_str_radix(s, 16).unwrap(); // parser has already validated
-                        r.push(b);
+                        bytes.push(u8::from_str_radix(s, 16).unwrap()); // parser has already validated
                     }
                 }
+                r.push(TupleItem::Bytes(bytes));
             }
             Value::Incbin(incbin) => {
                 if !incbin.incbin_args.numeric_literal.is_empty() {
                     return Err(incbin.err("/incbin/ (..., offset, length) unimplemented"));
                 }
                 let path_bytes = incbin.incbin_args.quoted_string.unescape()?;
-                let path = path_from_bytes(&path_bytes);
+                let filename = path_from_bytes(&path_bytes);
                 // TODO:  This may repeat an error already reported by `resolve_incbin_paths()`.
-                let bin = read_file(&path)?;
-                if r.is_empty() {
-                    r = bin;
-                } else {
-                    r.extend(bin);
-                }
+                let data = read_file(&filename)?;
+                r.push(TupleItem::BinaryInclude { filename, data });
             }
         }
     }
@@ -557,10 +584,10 @@ impl<'a> UnescapeExt<'a> for pest::Span<'a> {
 trait EvalExt<T> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError>
     where
-        T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>;
+        T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>;
 }
 
-impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for IntLiteral<'_> {
+impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for IntLiteral<'_> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         match self {
             IntLiteral::CharLiteral(c) => {
@@ -573,7 +600,9 @@ impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for I
     }
 }
 
-impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for NumericLiteral<'_> {
+impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T>
+    for NumericLiteral<'_>
+{
     fn eval(&self, _lookup_property: Option<&T>) -> Result<u64, SourceError> {
         let s = self.str().trim_end_matches(['U', 'L']); // dtc is case-sensitive here
         parse_int(s).ok_or_else(|| self.err("bad numeric literal"))
@@ -594,19 +623,19 @@ fn parse_int(s: &str) -> Option<u64> {
     u64::from_str_radix(digits, radix).ok()
 }
 
-impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for ParenExpr<'_> {
+impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for ParenExpr<'_> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         self.expr.eval(lookup_property)
     }
 }
 
-impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for Expr<'_> {
+impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for Expr<'_> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         self.ternary_prec.eval(lookup_property)
     }
 }
 
-impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for UnaryExpr<'_> {
+impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for UnaryExpr<'_> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         let arg = self.unary_prec.eval(lookup_property)?;
         match self.unary_op {
@@ -618,20 +647,24 @@ impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for U
     }
 }
 
-impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for TernaryPrec<'_> {
+impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for TernaryPrec<'_> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         let left = self.logical_or_prec.eval(lookup_property)?;
         let [mid, right] = self.expr else {
             return Ok(left);
         };
         // Note that subexpression evaluation is lazy, unlike dtc.
-        if left != 0 { mid.eval(lookup_property) } else { right.eval(lookup_property) }
+        if left != 0 {
+            mid.eval(lookup_property)
+        } else {
+            right.eval(lookup_property)
+        }
     }
 }
 
 macro_rules! impl_binary_eval {
     ($rule:ident, $op:ident, $arg:ident) => {
-        impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for $rule<'_> {
+        impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for $rule<'_> {
             fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
                 let mut left = self.$arg[0].eval(lookup_property);
                 for (op, right) in core::iter::zip(self.$op, &self.$arg[1..]) {
@@ -660,7 +693,7 @@ impl_binary_eval!(ShiftPrec, shift_prec_op, add_prec);
 impl_binary_eval!(AddPrec, add_prec_op, mul_prec);
 impl_binary_eval!(MulPrec, mul_prec_op, unary_prec);
 
-impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for UnaryPrec<'_> {
+impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for UnaryPrec<'_> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         match self {
             UnaryPrec::UnaryExpr(x) => x.eval(lookup_property),
@@ -671,17 +704,10 @@ impl<T: Fn(&PropertyReference) -> Result<Vec<u8>, SourceError>> EvalExt<T> for U
                     return Err(x.err("property references not allowed in this evaluation context"));
                 };
 
-                let bytes = lookup(x)?;
-                match bytes.len() {
-                    1 => Ok(bytes[0] as u64),
-                    2 => Ok(u16::from_be_bytes(bytes.try_into().unwrap()) as u64),
-                    4 => Ok(u32::from_be_bytes(bytes.try_into().unwrap()) as u64),
-                    8 => Ok(u64::from_be_bytes(bytes.try_into().unwrap())),
-                    n => Err(x.err(format!(
-                        "property reference returned {n} bytes, need 4 or 8 | bytes={bytes:?}"
-                    ))),
-                }
-            },
+                let item = lookup(x)?;
+                item.as_u64().ok_or(x.err(format!(
+                    "only numbers may be used in arithmetic context; property reference resolves to `{item}`")))
+            }
         }
     }
 }
@@ -753,7 +779,10 @@ fn test_property_reference_cycles() {
         let (tree, node_labels) = crate::merge::merge(dts, &mut scribe);
         _ = eval(tree, node_labels, &loader, &mut scribe);
         let err = scribe.collect().err().unwrap();
-        assert!(err.to_string().contains("property reference cycle detected"));
+        assert!(
+            err.to_string()
+                .contains("property reference cycle detected")
+        );
     }
 }
 
@@ -777,40 +806,27 @@ fn test_eval() {
         assert!(scribe.report(&loader, &mut std::io::stderr()));
         let check = tree.get_child("check").unwrap_or(&tree);
         for (name, value) in check.properties() {
-            if let Some((s1, s2)) = split_strs(value) {
-                assert_eq!(
-                    s1, s2,
-                    "property {name} did not evaluate to two equal strings"
-                );
-            } else if value.len() == 8 {
-                // Special-case two u32 cells.
-                let left = u32::from_be_bytes(value[0..4].try_into().unwrap());
-                let right = u32::from_be_bytes(value[4..8].try_into().unwrap());
-                assert_eq!(
-                    left, right,
-                    "property {name} did not evaluate to two equal cells"
-                );
-            } else {
-                let mid = value.len() / 2;
-                assert_eq!(
-                    &value[..mid],
-                    &value[mid..],
-                    "property {name} did not evaluate to two equal byte strings"
-                );
+            if name == "phandle" {
+                continue;
             }
+            let [left, right] = &value[..] else {
+                panic!("property {name} did not produce a two-element tuple: {value:?}");
+            };
+            if let TupleItem::NodeReference { path, phandle } = left {
+                if let TupleItem::Number {
+                    bits: 32,
+                    value: right,
+                } = right
+                {
+                    assert_eq!(*phandle, Some(*right as u32), "mismatch in property {name}");
+                    continue;
+                }
+                if let TupleItem::String(right) = right {
+                    assert_eq!(path.display(), *right, "mismatch in property {name}");
+                    continue;
+                }
+            }
+            assert_eq!(left, right, "mismatch in property {name}");
         }
-    }
-}
-
-#[cfg(test)]
-fn split_strs(bytes: &[u8]) -> Option<(&str, &str)> {
-    let v: Vec<&[u8]> = bytes.split(|b| *b == 0).collect();
-    if v.len() == 3 && v[2].is_empty() {
-        Some((
-            core::str::from_utf8(v[0]).ok()?,
-            core::str::from_utf8(v[1]).ok()?,
-        ))
-    } else {
-        None
     }
 }

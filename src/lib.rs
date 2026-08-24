@@ -9,19 +9,66 @@ pub mod node;
 pub mod parse;
 pub mod path;
 pub mod print;
+pub mod tuple;
 
 pub type Arena = bumpalo::Bump;
 pub type SourceNode<'i> = node::Node<&'i parse::rules::Prop<'i>>;
 pub type BinaryNode = node::Node<Vec<u8>>;
+pub type TupleNode = node::Node<tuple::Tuple>;
 
-/// Compile one or more DTS files into a fully-evaluated tree of binary values.
-/// `loader` resolves input paths and `/include/` or `/incbin/` directives.
-/// `scribe` records warnings and errors encountered during compilation.
+/// Deprecated aliases.
 pub fn compile(
     loader: &impl fs::Loader,
     dts_paths: &[&std::path::Path],
     scribe: &mut error::Scribe,
 ) -> BinaryNode {
+    compile_binary(loader, dts_paths, scribe)
+}
+pub fn compile_result(
+    loader: &impl fs::Loader,
+    dts_paths: &[&std::path::Path],
+) -> Result<BinaryNode, error::SourceError> {
+    compile_binary_result(loader, dts_paths)
+}
+pub fn compile_inmemory(source: &str) -> Result<BinaryNode, error::SourceError> {
+    compile_binary_inmemory(source)
+}
+
+/// Compile one or more DTS files into a fully-evaluated tree of binary values.
+/// `loader` resolves input paths and `/include/` or `/incbin/` directives.
+/// `scribe` records warnings and errors encountered during compilation.
+pub fn compile_binary(
+    loader: &impl fs::Loader,
+    dts_paths: &[&std::path::Path],
+    scribe: &mut error::Scribe,
+) -> BinaryNode {
+    compile_tuple(loader, dts_paths, scribe).map_values(&mut tuple::into_dtb_repr)
+}
+
+/// Compile one or more DTS files into a fully-evaluated tree of binary values.
+/// `loader` resolves input paths and `/include/` or `/incbin/` directives.
+/// Only the first compilation error is reported.
+pub fn compile_binary_result(
+    loader: &impl fs::Loader,
+    dts_paths: &[&std::path::Path],
+) -> Result<BinaryNode, error::SourceError> {
+    compile_tuple_result(loader, dts_paths).map(|tree| tree.map_values(&mut tuple::into_dtb_repr))
+}
+
+/// Compile a self-contained DTS into a fully-evaluated tree of binary values.
+/// Only the first compilation error is reported.
+pub fn compile_binary_inmemory(source: &str) -> Result<BinaryNode, error::SourceError> {
+    compile_tuple_inmemory(source).map(|tree| tree.map_values(&mut tuple::into_dtb_repr))
+}
+
+/// Compile one or more DTS files into a fully-evaluated tree of tuple values.
+/// `loader` resolves input paths and `/include/` or `/incbin/` directives.
+/// `scribe` records warnings and errors encountered during compilation.
+pub fn compile_tuple(
+    loader: &impl fs::Loader,
+    dts_paths: &[&std::path::Path],
+    scribe: &mut error::Scribe,
+) -> TupleNode {
     let arena = Arena::new();
     let dts = parse::parse_concat_with_includes(loader, &arena, dts_paths, scribe);
     let (tree, node_labels) = merge::merge(&dts, scribe);
@@ -29,21 +76,21 @@ pub fn compile(
     eval::eval(tree, node_labels, loader, scribe)
 }
 
-/// Compile one or more DTS files into a fully-evaluated tree of binary values.
+/// Compile one or more DTS files into a fully-evaluated tree of tuple values.
 /// `loader` resolves input paths and `/include/` or `/incbin/` directives.
 /// Only the first compilation error is reported.
-pub fn compile_result(
+pub fn compile_tuple_result(
     loader: &impl fs::Loader,
     dts_paths: &[&std::path::Path],
-) -> Result<BinaryNode, error::SourceError> {
+) -> Result<TupleNode, error::SourceError> {
     let mut scribe = error::Scribe::new(false);
-    let r = compile(loader, dts_paths, &mut scribe);
+    let r = compile_tuple(loader, dts_paths, &mut scribe);
     scribe.collect().map(|_| r)
 }
 
-/// Compile a self-contained DTS into a fully-evaluated tree of binary values.
+/// Compile a self-contained DTS into a fully-evaluated tree of tuple values.
 /// Only the first compilation error is reported.
-pub fn compile_inmemory(source: &str) -> Result<BinaryNode, error::SourceError> {
+pub fn compile_tuple_inmemory(source: &str) -> Result<TupleNode, error::SourceError> {
     let arena = Arena::new();
     let dts = parse::parse_typed(source, &arena)?;
     let mut scribe = error::Scribe::new(false);

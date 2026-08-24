@@ -48,6 +48,8 @@ enum Format {
     /// devicetree source
     Dts,
     /// fully-evaluated devicetree source
+    Dtt,
+    /// devicetree source deduced from binary output
     Dtv,
 }
 
@@ -56,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match args.in_format {
         Format::Dtb => dtb_input(args),
-        Format::Dti | Format::Dts | Format::Dtv => dts_input(args),
+        Format::Dti | Format::Dts | Format::Dtt | Format::Dtv => dts_input(args),
     }
 }
 
@@ -77,7 +79,7 @@ fn dtb_input(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             let dtb = odt::flat::serialize(&tree);
             writer.write_all(&dtb)?;
         }
-        Format::Dti | Format::Dts | Format::Dtv => {
+        Format::Dti | Format::Dts | Format::Dtt | Format::Dtv => {
             let source = format!("/dts-v1/;/{tree};");
             // Reparse and pretty-print the output.
             let tree = odt::parse::parse_untyped(&source).unwrap();
@@ -100,7 +102,7 @@ fn dts_input(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let mut scribe = odt::error::Scribe::new(args.treat_warnings_as_errors);
     let bytes = match args.out_format {
         Format::Dtb => {
-            let mut tree = odt::compile(&loader, &[&input], &mut scribe);
+            let mut tree = odt::compile_binary(&loader, &[&input], &mut scribe);
             if args.sort {
                 tree.sort();
             }
@@ -132,10 +134,22 @@ fn dts_input(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             let output = odt::print::format(tree);
             output.into_bytes()
         }
+        Format::Dtt => {
+            // Evaluate expressions, retaining types.
+            let mut tree = odt::compile_tuple(&loader, &[&input], &mut scribe);
+            if args.sort {
+                tree.sort();
+            }
+            let source = format!("/dts-v1/;/{tree};");
+            // Reparse and pretty-print the output.
+            let tree = odt::parse::parse_untyped(&source).unwrap();
+            let output = odt::print::format(tree);
+            output.into_bytes()
+        }
         Format::Dtv => {
             // Lower all the way to binary node values, then convert back into source.
             // Types are lost in this process.
-            let mut tree = odt::compile(&loader, &[&input], &mut scribe);
+            let mut tree = odt::compile_binary(&loader, &[&input], &mut scribe);
             if args.sort {
                 tree.sort();
             }

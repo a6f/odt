@@ -33,13 +33,13 @@
 
   check {
     // test properties:
-    phandle_a = <9 &a>;
-    phandle_b = <8 &b>;
-    phandle_c = <6 &c>;
-    phandle_d = <5 &d>;
-    phandle_f = <4 &f>;
-    phandle_g = <2 &g>;
-    phandle_h = <10 &h>;
-    phandle_unlabeled = <7 &{/drivers/unlabeled}>;
+    phandle_a = <&a 9>;
+    phandle_b = <&b 8>;
+    phandle_c = <&c 6>;
+    phandle_d = <&d 5>;
+    phandle_f = <&f 4>;
+    phandle_g = <&g 2>;
+    phandle_h = <&h 10>;
+    phandle_unlabeled = <&{/drivers/unlabeled} 7>;
   };
 };

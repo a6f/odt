@@ -33,11 +33,11 @@ root2: root3: &{.} {
 
 / {
     check {
-        phandle = <0x21122112>;
+        phandle = <0x12345678>;
         check_ref_root = <&{/} 1>;
         check_ref_label = <&postit 2>;
-        check_ref_self = <&{.} 0x21122112>;
-        check_ref_selfnorm = <&{./} 0x21122112>;
+        check_ref_self = <&{.} 0x12345678>;
+        check_ref_selfnorm = <&{./} 0x12345678>;
         check_ref_selfrel = <&{./child} 3>;
         check_ref_selfrel2 = <&{./foo/bar} 4>;
         check_str_root = &root, "/";
