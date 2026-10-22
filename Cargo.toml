@@ -9,8 +9,8 @@ default-run = "dtc"
 
 [dependencies]
 hashlink = "0.10"
-pest = "2"
-pest_derive = "2"
+pest = "=2.9.2"
+pest_derive = "=2.9.2"
 clap = { version = "4.5", features = ["derive"], optional = true }
 bumpalo = { version = "3.16.0", features = ["collections"] }
 pestle = "0.2"
