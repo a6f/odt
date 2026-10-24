@@ -113,7 +113,7 @@ impl<P> Node<P> {
         }
     }
 
-    pub fn iter_preorder(&self, loc: NodePath) -> NodeIter<P> {
+    pub fn iter_preorder(&self, loc: NodePath) -> NodeIter<'_, P> {
         NodeIter {
             path: loc,
             first: Some(self),
