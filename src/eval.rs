@@ -395,6 +395,24 @@ fn evaluate_propvalue(
                                 }
                             }
                         }
+                        Cell::FloatLiteral(lit) => {
+                            let v: f64 = lit
+                                .str()
+                                .parse()
+                                .map_err(|_| lit.err("bad float literal"))?;
+                            // IEEE 754 bit patterns must not go through the
+                            // sign-extension check below.
+                            match bits {
+                                32 => r.extend((v as f32).to_be_bytes()),
+                                64 => r.extend(v.to_be_bytes()),
+                                _ => {
+                                    return Err(
+                                        lit.err("float literals need /bits/ == 32 or 64")
+                                    );
+                                }
+                            }
+                            continue;
+                        }
                         Cell::ParenExpr(expr) => expr.eval(lookup_property)?,
                         Cell::IntLiteral(lit) => lit.eval(lookup_property)?,
                     };
@@ -762,6 +780,7 @@ fn test_eval() {
     for source in [
         include_str!("testdata/charlit.dts"),
         include_str!("testdata/expr.dts"),
+        include_str!("testdata/float.dts"),
         include_str!("testdata/phandle.dts"),
         #[cfg(feature = "wrapping-arithmetic")]
         include_str!("testdata/random_expressions.dts"),
