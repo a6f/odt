@@ -1,3 +1,6 @@
+//! Type representing a tree of devicetree nodes.
+//! Each node has a dict of properties with values of a parameterized type.
+
 use crate::path::NodePath;
 use core::fmt::{Display, Formatter, Write};
 use hashlink::linked_hash_map::Entry;

@@ -1,3 +1,5 @@
+//! Types for representing and accumulating errors.
+
 use crate::fs::Loader;
 use crate::parse::Rule;
 use core::fmt::{Debug, Display, Formatter};

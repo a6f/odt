@@ -1,3 +1,8 @@
+//! Types which represent fully-evaluated properties in a devicetree.
+//!
+//! Unlike the DTB / FDT binary representation of property values, type information is retained,
+//! so integers, phandles, strings, etc can be distinguished reliably.
+
 use crate::node::OptionDisplay;
 use crate::path::NodePath;
 use core::fmt;

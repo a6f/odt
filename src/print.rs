@@ -1,3 +1,5 @@
+//! Facilities for pretty-printing Devicetree Source.
+
 use crate::parse::{Parsed, Rule};
 use core::fmt::Write;
 use std::collections::HashMap;

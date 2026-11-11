@@ -1,3 +1,7 @@
+//! Facilities for DTS node labels.
+//!
+//! Each devicetree has a global namespace of labels: strings which refer to nodes.
+
 use crate::error::SourceError;
 use crate::node::Node;
 use crate::parse::TypedRuleExt;

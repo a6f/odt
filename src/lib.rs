@@ -1,3 +1,19 @@
+//! A library for parsing and evaluating Devicetree Source (.dts) files.
+//!
+//! Devicetree compilation proceeds in phases, each with an associated module:
+//! - [`parse`]     : Parse bytes/strings with the grammar in `dts.pest`, process `/include`/ directives.
+//! - [`mod@merge`] : Apply overrides and deletions.
+//! - [`eval`]      : Load `/incbin/` directives, assign phandles, and evaluate properties, including
+//!                   references and parenthesized expressions.
+//! - [`mod@tuple`] : Lower property values to byte arrays.
+//! - [`flat`]      : Serialize to DTB / FDT format.
+//!
+//! Intermediate results may be obtained after any of these phases.
+//!
+//! Convenience methods are provided below for compiling either files on disk or a string in
+//! memory, producing a tree of typed values ([`TupleNode`]) or byte arrays ([`BinaryNode`]).
+//! Files on disk can also be parsed and merged but left unevaluated ([`SourceNode`]).
+
 pub mod error;
 pub mod eval;
 pub mod flat;
@@ -16,7 +32,7 @@ pub type SourceNode<'i> = node::Node<&'i parse::rules::Prop<'i>>;
 pub type BinaryNode = node::Node<Vec<u8>>;
 pub type TupleNode = node::Node<tuple::Tuple>;
 
-/// Deprecated aliases.
+/// Deprecated alias for [`compile_binary()`].
 pub fn compile(
     loader: &impl fs::Loader,
     dts_paths: &[&std::path::Path],
@@ -24,12 +40,14 @@ pub fn compile(
 ) -> BinaryNode {
     compile_binary(loader, dts_paths, scribe)
 }
+/// Deprecated alias for [`compile_binary_result()`].
 pub fn compile_result(
     loader: &impl fs::Loader,
     dts_paths: &[&std::path::Path],
 ) -> Result<BinaryNode, error::SourceError> {
     compile_binary_result(loader, dts_paths)
 }
+/// Deprecated alias for [`compile_binary_inmemory()`].
 pub fn compile_inmemory(source: &str) -> Result<BinaryNode, error::SourceError> {
     compile_binary_inmemory(source)
 }
@@ -114,7 +132,7 @@ pub fn merge<'a>(
     eval::resolve_incbin_paths(loader, arena, tree, scribe)
 }
 
-/// Like `merge()`, but only the first compilation error is reported.
+/// Like [`merge()`], but only the first compilation error is reported.
 pub fn merge_result<'a>(
     loader: &'a impl fs::Loader,
     arena: &'a Arena,

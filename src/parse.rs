@@ -1,4 +1,4 @@
-//! Facilities for parsing DTS files and expanding "/include/" directives.
+//! Facilities for parsing DTS files and expanding `/include/` directives.
 
 use crate::Arena;
 use crate::error::{Scribe, SourceError};

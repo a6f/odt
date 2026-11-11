@@ -1,4 +1,5 @@
-/// Helper for translating between byte offsets and (line, column) positions in a text buffer.
+//! Helpers for translating between byte offsets and (line, column) positions in a text buffer.
+
 /// Lines and columns start at one, not zero.  Column values count codepoints, not bytes.
 pub struct LineTable<'a> {
     buf: &'a str,

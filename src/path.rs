@@ -1,3 +1,5 @@
+//! Type representing node paths in a devicetree.
+
 use core::fmt::{Debug, Display, Formatter};
 use core::ops::Bound;
 
