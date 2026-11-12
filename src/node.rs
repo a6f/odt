@@ -246,7 +246,6 @@ impl OptionDisplay for Vec<u8> {
             return None;
         }
         let mut f = String::new();
-        // Formatting here is sloppy because we pass the output through the pretty-printer.
         if let Some(s) = guess_c_strings(self) {
             for (i, w) in s.split_terminator('\0').enumerate() {
                 if i > 0 {
@@ -260,16 +259,21 @@ impl OptionDisplay for Vec<u8> {
             }
         } else if self.len() % 4 == 0 {
             _ = write!(f, "<");
-            for w in self.chunks_exact(4) {
-                // stabilization of slice::array_chunks would simplify this
-                let n = u32::from_be_bytes(w.try_into().unwrap());
-                _ = write!(f, " {n:#04x}");
+            for (i, w) in self.as_chunks::<4>().0.into_iter().enumerate() {
+                if i > 0 {
+                    _ = write!(f, " ");
+                }
+                let n = u32::from_be_bytes(*w);
+                _ = write!(f, "{n:#04x}");
             }
             _ = write!(f, ">")
         } else {
             _ = write!(f, "[");
-            for b in self {
-                _ = write!(f, " {b:02x}");
+            for (i, b) in self.iter().enumerate() {
+                if i > 0 {
+                    _ = write!(f, " ");
+                }
+                _ = write!(f, "{b:02x}");
             }
             _ = write!(f, "]");
         }
@@ -343,7 +347,7 @@ fn test_format() {
     );
     assert_eq!(
         node.get_property("zabz").unwrap().fmt_opt().unwrap(),
-        "< 0x616200>"
+        "<0x616200>"
     );
 
     // Verify that these round-trip through the parser and evaluator.

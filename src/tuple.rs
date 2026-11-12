@@ -109,8 +109,11 @@ impl fmt::Display for TupleItem {
             Self::NodeReference { path, .. } => write!(f, "&{{{path}}}"),
             Self::Bytes(data) | Self::BinaryInclude { data, .. } => {
                 write!(f, "[")?;
-                for b in data {
-                    write!(f, " {b:02x}")?;
+                for (i, b) in data.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "{b:02x}")?;
                 }
                 write!(f, "]")
             }
