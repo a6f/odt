@@ -2,7 +2,7 @@ library features
 ----
 emulate dtc's containers in order to assign the same phandles
 pretty-printing: better whitespace heuristics
-pretty-printing: more opinionated formatting (e.g. lowercase hex, strip ULL suffixes)
+pretty-printing: more opinionated formatting (e.g. lowercase hex, insert digit separators)
 linting (e.g. unit addresses vs regs property)
 sorted output tree
 error-tolerant parsing

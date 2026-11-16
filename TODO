@@ -1,7 +1,4 @@
-check validity of node/property names after parsing
 improve reporting of warnings during evaluation
 improve reporting of UTF-8 errors in fs
 unittest coverage of warnings from integer truncation
-fail if input uses /omit-if-no-ref/ (currently ignored so that more of dtc's test inputs could be parsed)
-dtc has special behavior for the "name" property: dropped if equal to basename (node name before '@'), otherwise error
 give a better "properties must precede subnodes" error message, or relax that restriction in the grammar

@@ -98,10 +98,8 @@ pub fn merge_with_events<'i>(
     let rootpath = NodePath::root();
     for top_def in dts.top_def {
         match top_def {
-            TopDef::Header(_) => (),      // ignored
-            TopDef::Include(_) => (),     // already processed
-            TopDef::Memreserve(_) => (),  // ignored
-            TopDef::TopOmitNode(_) => (), // ignored
+            TopDef::Header(_) => (),  // ignored
+            TopDef::Include(_) => (), // already processed
             TopDef::TopNode(topnode) => {
                 let path = match topnode.top_node_name {
                     TopNodeName::NodeReference(noderef) => {
@@ -173,7 +171,7 @@ fn fill_source_node<'o, 'i: 'o>(
     for prop_def in body.node_contents.prop_def {
         match prop_def {
             PropDef::Prop(prop) => {
-                let name = prop.prop_name.unescape_name();
+                let name = prop.prop_name.str();
                 if !names_used.insert(name) {
                     // dtc rejects this only during the first definition of a node.
                     // However, it seems sensible to reopen nodes at non-top level,
@@ -184,7 +182,7 @@ fn fill_source_node<'o, 'i: 'o>(
                 node.set_property(name, prop);
             }
             PropDef::DelProp(delprop) => {
-                let name = delprop.prop_name.unescape_name();
+                let name = delprop.prop_name.str();
                 names_used.remove(name);
                 events(MergeEvent::DelProp {
                     path,
@@ -198,25 +196,23 @@ fn fill_source_node<'o, 'i: 'o>(
     for child_def in body.node_contents.child_def {
         match child_def {
             ChildDef::ChildNode(childnode) => {
-                let name = childnode.node_name.unescape_name();
+                let name = childnode.node_name.str();
                 let child_path = path.join(name);
                 events(MergeEvent::AddNode {
                     path: &child_path,
                     create: NodeCreate::ChildNode(childnode),
                 });
                 let child = node.add_child(name);
-                for child_node_prefix in childnode.child_node_prefix {
-                    if let ChildNodePrefix::Label(label) = child_node_prefix {
-                        if let Err(e) = add_label(node_labels, label, child, &child_path, events) {
-                            scribe.err(e);
-                        }
+                for label in childnode.label {
+                    if let Err(e) = add_label(node_labels, label, child, &child_path, events) {
+                        scribe.err(e);
                     }
                 }
                 let body = childnode.node_body;
                 fill_source_node(node_labels, child, &child_path, body, scribe, events);
             }
             ChildDef::DelNode(delnode) => {
-                let name = delnode.node_name.unescape_name();
+                let name = delnode.node_name.str();
                 let child_path = path.join(name);
                 events(MergeEvent::DelNode {
                     path: &child_path,
@@ -231,24 +227,6 @@ fn fill_source_node<'o, 'i: 'o>(
                 }
             }
         }
-    }
-}
-
-trait UnescapeName<'a> {
-    fn unescape_name(&self) -> &'a str;
-}
-
-impl<'a> UnescapeName<'a> for NodeName<'a> {
-    fn unescape_name(&self) -> &'a str {
-        let s = self.str();
-        s.strip_prefix('\\').unwrap_or(s)
-    }
-}
-
-impl<'a> UnescapeName<'a> for PropName<'a> {
-    fn unescape_name(&self) -> &'a str {
-        let s = self.str();
-        s.strip_prefix('\\').unwrap_or(s)
     }
 }
 

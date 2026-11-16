@@ -1,24 +1,14 @@
 //! A Parsing Expression Grammar for the Devicetree Source format.
 //!
-//! See https://devicetree-specification.readthedocs.io/en/stable/source-language.html.
-
-// DIFF comments mark known differences from the grammar `dtc` accepts.
-//
-// `dtc` will accept any byte sequence in string and char literals, while pest
-// implicitly requires UTF-8 (since it parses a Rust `str`).
-//
-// This grammar is not as strict as it could be.  For the sake of error
-// messages on bad input, some constraints are checked after parsing.
-// For example, the exact set of characters in node/property names; `dtc`
-// checks only after the tree is built, so the following produces no errors:
-//   / {
-//       0-9,._+*#?@;
-//       0-9,._+*#?@ {};
-//   };
-//   / {
-//       /delete-property/ 0-9,._+*#?@;
-//       /delete-node/ 0-9,._+*#?@;
-//   };
+//! See https://devicetree-specification.readthedocs.io/en/stable/source-language.html
+//! for the inspiration.
+//!
+//! This grammar deviates considerably from what `dtc` accepts.  For example,
+//! constructs such as `/memreserve/` and `/omit-if-no-refs/` are not supported,
+//! and new features like `${...}` (property references) have been added.
+//!
+//! This grammar is not as strict as it could be.  For the sake of error
+//! messages on bad input, some constraints are checked after parsing.
 
 // Pest accepts the WHITESPACE and COMMENT rules between any other tokens
 // outside an atomic rule (introduced with '@' or '$').
@@ -27,7 +17,6 @@ WHITESPACE = @{ " " | "\t" | "\r" | "\n" }
 COMMENT = ${ BlockComment | LineComment }
 BlockComment = @{ "/*" ~ (BlockComment | !"*/" ~ ANY)* ~ "*/" }
 // Line comments do not contain their own newline.
-// DIFF: Thus one is accepted at EOF; dtc rejects this.
 LineComment = @{ "//" ~ (!newline ~ ANY)* }
 newline = _{ "\n" | "\r\n" }
 
@@ -38,8 +27,6 @@ DtsFile = {  SOI ~ Dts ~ EOI }
 /// Overall structure of a DTS file.
 Dts = { TopDef* }
 
-// DIFF: dtc accepts #line directives (as emitted by cpp)
-
 Semicolon = { ";" }
 SlashBits = { "/bits/" }
 SlashDeleteNode = { "/delete-node/" }
@@ -47,28 +34,15 @@ SlashDeleteProperty = { "/delete-property/" }
 SlashDtsV1 = { "/dts-v1/" }
 SlashIncbin = { "/incbin/" }
 SlashInclude = { "/include/" }
-SlashMemreserve = { "/memreserve/" }
-SlashOmitIfNoRef = { "/omit-if-no-ref/" }
-SlashPlugin = { "/plugin/" }
 
-// DIFF: dtc requires a "/dts-v1/;" header but we make it optional and permit it
-//       to appear later, to allow parsing included files with the same grammar.
-Header = { Version ~ Plugin? }
-Version = { SlashDtsV1 ~ Semicolon }
-Plugin = { SlashPlugin ~ Semicolon }
+Header = { SlashDtsV1 ~ Semicolon }
 
-// DIFF: dtc accepts /include/ anywhere, not just at file scope
+//  dtc accepts /include/ anywhere, but we restrict it to file scope
 Include = ${ SlashInclude ~ IncludeWhitespace ~ QuotedString }
 IncludeWhitespace = @{ WHITESPACE* }
 
-// DIFF: dtc requires /memreserve/ to precede all node definitions
-Memreserve = { Label* ~ SlashMemreserve ~ MemreserveArg ~ MemreserveArg ~ Semicolon }
-MemreserveArg = { ParenExpr | IntLiteral }
-
-// DIFF: dtc requires the first definition to be an unlabeled TopNode
-TopDef = { Header | Include | Memreserve | TopDelNode | TopOmitNode | TopNode }
+TopDef = { Header | Include | TopDelNode | TopNode }
 TopDelNode = { SlashDeleteNode ~ NodeReference ~ Semicolon }
-TopOmitNode = { SlashOmitIfNoRef ~ NodeReference ~ Semicolon }
 
 TopNode = { Label* ~ TopNodeName ~ NodeBody }
 TopNodeName = { RootNodeName | NodeReference }
@@ -83,7 +57,7 @@ labelname_rest = _{ 'A'..'Z' | "_" | 'a'..'z' | '0'..'9' }
 NodeReference = @{ ("&" ~ LabelName) | ("&{" ~ NodePath ~ "}") }
 PropertyReference = @{ ("$" ~ LabelName) | ("${" ~ PropertyPath ~ "}") }
 
-// dtc will accept and normalize node paths such as "/x///y/".
+// We accept and normalize node paths such as "/x///y/".
 // label-relative references such as &{label/child/subnode} also work.
 NodePath = @{ nodepathchar+ }
 nodepathchar = _{ nodechar | "/" }
@@ -94,38 +68,36 @@ propertypathchar = _{ propchar | "/" }
 NodeBody = { OpenNode ~ NodeContents ~ CloseNode ~ EndNode }
 OpenNode = { "{" }
 CloseNode = { "}" }
+
+// TODO: make optional
 EndNode = { Semicolon }
+
+// TODO: stop forcing this ordering
 NodeContents = { PropDef* ~ ChildDef* }
 PropDef = { DelProp | Prop }
 ChildDef = { DelNode | ChildNode }
 
-DelNode = { DelNodeSuperfluousPrefix* ~ SlashDeleteNode ~ NodeName ~ Semicolon }
-DelNodeSuperfluousPrefix = { Label | SlashOmitIfNoRef }
-DelProp = { DelPropSuperfluousPrefix* ~ SlashDeleteProperty ~ PropName ~ Semicolon }
-DelPropSuperfluousPrefix = { Label }
+DelNode = { SlashDeleteNode ~ NodeName ~ Semicolon }
+DelProp = { SlashDeleteProperty ~ PropName ~ Semicolon }
 
-ChildNode = { ChildNodePrefix* ~ NodeName ~ NodeBody }
-ChildNodePrefix = { Label | SlashOmitIfNoRef }
+ChildNode = { Label* ~ NodeName ~ NodeBody }
 
-NodeName = @{ "\\"? ~ nodechar+ }
-// dtc accepts all of these during parsing; later validation forbids some.
-nodechar = _{ 'A'..'Z' | 'a'..'z' | '0'..'9' | "#" | "*" | "+" | "," | "-" | "." | "?" | "@" | "_" }
+NodeName = @{ nodechar+ }
+nodechar = _{ 'A'..'Z' | 'a'..'z' | '0'..'9' | "," | "-" | "." | "@" | "_" }
 
-Prop = { Label* ~ PropName ~ (PropAssign ~ PropValue)? ~ Semicolon }
+Prop = { PropName ~ (PropAssign ~ PropValue)? ~ Semicolon }
 PropAssign = { "=" }
 
-PropName = @{ "\\"? ~ propchar+ }
-// dtc accepts all of these during parsing; later validation forbids some.
-propchar = _{ 'A'..'Z' | 'a'..'z' | '0'..'9' | "#" | "*" | "+" | "," | "-" | "." | "?" | "@" | "_" }
+PropName = @{ propchar+ }
+propchar = _{ 'A'..'Z' | 'a'..'z' | '0'..'9' | "#" | "," | "-" | "." | "@" | "_" }
 
-PropValue = { LabeledValue ~ (Comma ~ LabeledValue)* }
+PropValue = { Value ~ (Comma ~ Value)* }
 Comma = { "," }
-LabeledValue = { Label* ~ Value ~ Label* }
 Value = { Cells | QuotedString | NodeReference | PropertyReference | ByteString | Incbin }
 
-Cells = { Bits? ~ OpenCells ~ LabelOrCell* ~ CloseCells }
+Cells = { Bits? ~ OpenCells ~ Cell* ~ CloseCells }
+// TODO: remove /bits/ once we've stopped using FDT binary output
 Bits = { SlashBits ~ NumericLiteral }
-LabelOrCell = { Label | Cell }
 OpenCells = { "<" }
 CloseCells = { ">" }
 
@@ -188,15 +160,15 @@ NotEqual = { "!=" }
 IntLiteral = ${ CharLiteral | NumericLiteral }
 
 // To improve error messages, escape sequences are not fully parsed here.
-// DIFF: dtc's parsing of '\\' is broken -- but only if there is a later ' in the file!
 CharLiteral = @{ "'" ~ singlequotedchar* ~ "'" }
 singlequotedchar = _{ !("'" | "\\") ~ ANY | "\\" ~ ANY }
 
-NumericLiteral = @{ (HexLiteral | OctalLiteral | DecimalLiteral) ~ NumericSuffix? }
+// TODO: add binary literals, digit separators
+NumericLiteral = @{ (HexLiteral | OctalLiteral | DecimalLiteral) }
 HexLiteral = @{ ^"0x" ~ ('0'..'9' | 'A'..'F' | 'a'..'f')* }
+// TODO: change to 0o
 OctalLiteral = @{ "0" ~ ('0'..'7')* }
 DecimalLiteral = @{ '1'..'9' ~ ('0'..'9')* }
-NumericSuffix = @{ "ULL" | "LL" | "UL" | "L" | "U" }
 
 QuotedString = @{ "\"" ~ doublequotedchar* ~ "\"" }
 doublequotedchar = _{ !("\"" | "\\") ~ ANY | "\\" ~ ANY }
@@ -207,5 +179,4 @@ OpenSquare = { "[" }
 CloseSquare = { "]" }
 HexByte = @{ ('0'..'9' | 'A'..'F' | 'a'..'f'){2} }
 
-Incbin = { SlashIncbin ~ OpenParen ~ IncbinArgs ~ CloseParen }
-IncbinArgs = { QuotedString ~ (Comma ~ NumericLiteral)* }
+Incbin = { SlashIncbin ~ OpenParen ~ QuotedString ~ CloseParen }

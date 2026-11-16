@@ -68,7 +68,7 @@ pub fn resolve_incbin_paths<'a>(
 ) -> SourceNode<'a> {
     let mut map_v = |v: &'a Value| match v {
         Value::Incbin(incbin) => {
-            let path_bytes = match incbin.incbin_args.quoted_string.unescape() {
+            let path_bytes = match incbin.quoted_string.unescape() {
                 Err(e) => {
                     scribe.err(e);
                     return v;
@@ -97,12 +97,8 @@ pub fn resolve_incbin_paths<'a>(
                     let new_path = String::from_utf8_lossy(&new_path_bytes);
                     let quoted_string = arena.alloc_str(&format!("\"{new_path}\""));
                     let quoted_string = parse_quoted_string(quoted_string, arena).unwrap();
-                    let incbin_args = arena.alloc(IncbinArgs {
-                        quoted_string,
-                        ..*incbin.incbin_args
-                    });
                     let incbin = arena.alloc(Incbin {
-                        incbin_args,
+                        quoted_string,
                         ..**incbin
                     });
                     // XXX  This doesn't work for DTS output, because OptionDisplay calls
@@ -118,15 +114,9 @@ pub fn resolve_incbin_paths<'a>(
         other => other,
     };
     let mut map_pv = |pv: &'a PropValue| -> &'a PropValue {
-        let mut v = pv.labeled_value.to_vec();
-        for lv in v.iter_mut() {
-            *lv = arena.alloc(LabeledValue {
-                value: map_v(lv.value),
-                ..**lv
-            });
-        }
+        let values: Vec<&'a Value> = pv.value.iter().map(|v| map_v(v)).collect();
         arena.alloc(PropValue {
-            labeled_value: arena.alloc_slice_copy(&v),
+            value: arena.alloc_slice_copy(&values),
             ..*pv
         })
     };
@@ -141,9 +131,7 @@ pub fn resolve_incbin_paths<'a>(
 }
 
 fn contains_incbin(pv: &PropValue) -> bool {
-    pv.labeled_value
-        .iter()
-        .any(|lv| matches!(lv.value, Value::Incbin(_)))
+    pv.value.iter().any(|v| matches!(v, Value::Incbin(_)))
 }
 
 type PhandleMap = LinkedHashMap<NodePath, u32>;
@@ -183,10 +171,10 @@ fn visit_phandle_references<P>(
 ) {
     for (_, prop) in node.properties() {
         if let Some(propvalue) = prop.prop_value {
-            for labeled_value in propvalue.labeled_value {
-                if let Value::Cells(cells) = labeled_value.value {
-                    for label_or_cell in cells.label_or_cell {
-                        if let LabelOrCell::Cell(Cell::NodeReference(phandle)) = label_or_cell {
+            for value in propvalue.value {
+                if let Value::Cells(cells) = value {
+                    for cell in cells.cell {
+                        if let Cell::NodeReference(phandle) = cell {
                             match labels.resolve(path, phandle) {
                                 Ok(target) => {
                                     need_phandles.replace(target);
@@ -382,8 +370,8 @@ fn evaluate_propvalue(
 ) -> Result<Tuple, SourceError> {
     let mut r = vec![];
     let lookup_property = Some(&lookup_property_fn);
-    for labeled_value in propvalue.labeled_value {
-        match labeled_value.value {
+    for value in propvalue.value {
+        match value {
             Value::Cells(cells) => {
                 let bits = match cells.bits {
                     None => 32,
@@ -395,10 +383,7 @@ fn evaluate_propvalue(
                         }
                     }
                 };
-                for label_or_cell in cells.label_or_cell {
-                    let LabelOrCell::Cell(cell) = label_or_cell else {
-                        continue;
-                    };
+                for cell in cells.cell {
                     let mut item = match cell {
                         Cell::NodeReference(noderef) => {
                             let (path, phandle) = lookup_phandle(noderef)?;
@@ -476,10 +461,7 @@ fn evaluate_propvalue(
                 r.push(TupleItem::Bytes(bytes));
             }
             Value::Incbin(incbin) => {
-                if !incbin.incbin_args.numeric_literal.is_empty() {
-                    return Err(incbin.err("/incbin/ (..., offset, length) unimplemented"));
-                }
-                let path_bytes = incbin.incbin_args.quoted_string.unescape()?;
+                let path_bytes = incbin.quoted_string.unescape()?;
                 let filename = path_from_bytes(&path_bytes);
                 // TODO:  This may repeat an error already reported by `resolve_incbin_paths()`.
                 let data = read_file(&filename)?;
@@ -607,8 +589,7 @@ impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for Int
 
 impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for NumericLiteral<'_> {
     fn eval(&self, _lookup_property: Option<&T>) -> Result<u64, SourceError> {
-        let s = self.str().trim_end_matches(['U', 'L']); // dtc is case-sensitive here
-        parse_int(s).ok_or_else(|| self.err("bad numeric literal"))
+        parse_int(self.str()).ok_or_else(|| self.err("bad numeric literal"))
     }
 }
 

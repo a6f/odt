@@ -239,7 +239,7 @@ impl PrettyPrinter {
         // Insert vertical whitespace between some pairings of adjacent rules.
         // NB:  RHS needs to be explicitly matched when next_sibling is computed.
         let lines = match (rule, next_sibling) {
-            (Rule::Version, _) => 2,
+            (Rule::Header, _) => 2,
             (Rule::OpenNode, _) => 1,
             (Rule::COMMENT, Rule::TopNode) => 0,
             (Rule::BlockComment, Rule::TopNode) => 1,
