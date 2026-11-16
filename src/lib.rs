@@ -32,26 +32,6 @@ pub type SourceNode<'i> = node::Node<&'i parse::rules::Prop<'i>>;
 pub type BinaryNode = node::Node<Vec<u8>>;
 pub type TupleNode = node::Node<tuple::Tuple>;
 
-/// Deprecated alias for [`compile_binary()`].
-pub fn compile(
-    loader: &dyn fs::Loader,
-    dts_paths: &[&std::path::Path],
-    scribe: &mut error::Scribe,
-) -> BinaryNode {
-    compile_binary(loader, dts_paths, scribe)
-}
-/// Deprecated alias for [`compile_binary_result()`].
-pub fn compile_result(
-    loader: &dyn fs::Loader,
-    dts_paths: &[&std::path::Path],
-) -> Result<BinaryNode, error::SourceError> {
-    compile_binary_result(loader, dts_paths)
-}
-/// Deprecated alias for [`compile_binary_inmemory()`].
-pub fn compile_inmemory(source: &str) -> Result<BinaryNode, error::SourceError> {
-    compile_binary_inmemory(source)
-}
-
 /// Compile one or more DTS files into a fully-evaluated tree of binary values.
 /// `loader` resolves input paths and `/include/` or `/incbin/` directives.
 /// `scribe` records warnings and errors encountered during compilation.
