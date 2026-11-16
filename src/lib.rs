@@ -34,7 +34,7 @@ pub type TupleNode = node::Node<tuple::Tuple>;
 
 /// Deprecated alias for [`compile_binary()`].
 pub fn compile(
-    loader: &impl fs::Loader,
+    loader: &dyn fs::Loader,
     dts_paths: &[&std::path::Path],
     scribe: &mut error::Scribe,
 ) -> BinaryNode {
@@ -42,7 +42,7 @@ pub fn compile(
 }
 /// Deprecated alias for [`compile_binary_result()`].
 pub fn compile_result(
-    loader: &impl fs::Loader,
+    loader: &dyn fs::Loader,
     dts_paths: &[&std::path::Path],
 ) -> Result<BinaryNode, error::SourceError> {
     compile_binary_result(loader, dts_paths)
@@ -56,7 +56,7 @@ pub fn compile_inmemory(source: &str) -> Result<BinaryNode, error::SourceError> 
 /// `loader` resolves input paths and `/include/` or `/incbin/` directives.
 /// `scribe` records warnings and errors encountered during compilation.
 pub fn compile_binary(
-    loader: &impl fs::Loader,
+    loader: &dyn fs::Loader,
     dts_paths: &[&std::path::Path],
     scribe: &mut error::Scribe,
 ) -> BinaryNode {
@@ -67,7 +67,7 @@ pub fn compile_binary(
 /// `loader` resolves input paths and `/include/` or `/incbin/` directives.
 /// Only the first compilation error is reported.
 pub fn compile_binary_result(
-    loader: &impl fs::Loader,
+    loader: &dyn fs::Loader,
     dts_paths: &[&std::path::Path],
 ) -> Result<BinaryNode, error::SourceError> {
     compile_tuple_result(loader, dts_paths).map(|tree| tree.map_values(&mut tuple::into_dtb_repr))
@@ -83,7 +83,7 @@ pub fn compile_binary_inmemory(source: &str) -> Result<BinaryNode, error::Source
 /// `loader` resolves input paths and `/include/` or `/incbin/` directives.
 /// `scribe` records warnings and errors encountered during compilation.
 pub fn compile_tuple(
-    loader: &impl fs::Loader,
+    loader: &dyn fs::Loader,
     dts_paths: &[&std::path::Path],
     scribe: &mut error::Scribe,
 ) -> TupleNode {
@@ -98,7 +98,7 @@ pub fn compile_tuple(
 /// `loader` resolves input paths and `/include/` or `/incbin/` directives.
 /// Only the first compilation error is reported.
 pub fn compile_tuple_result(
-    loader: &impl fs::Loader,
+    loader: &dyn fs::Loader,
     dts_paths: &[&std::path::Path],
 ) -> Result<TupleNode, error::SourceError> {
     let mut scribe = error::Scribe::new(false);
@@ -122,7 +122,7 @@ pub fn compile_tuple_inmemory(source: &str) -> Result<TupleNode, error::SourceEr
 /// `arena` retains parse tree nodes.
 /// `scribe` records warnings and errors encountered during compilation.
 pub fn merge<'a>(
-    loader: &'a impl fs::Loader,
+    loader: &'a dyn fs::Loader,
     arena: &'a Arena,
     dts_paths: &[&std::path::Path],
     scribe: &mut error::Scribe,
@@ -134,7 +134,7 @@ pub fn merge<'a>(
 
 /// Like [`merge()`], but only the first compilation error is reported.
 pub fn merge_result<'a>(
-    loader: &'a impl fs::Loader,
+    loader: &'a dyn fs::Loader,
     arena: &'a Arena,
     dts_paths: &[&std::path::Path],
 ) -> Result<SourceNode<'a>, error::SourceError> {

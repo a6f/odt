@@ -46,7 +46,7 @@ pub(crate) fn parse_quoted_string<'i>(
 
 /// Parse the source file named by `path`.
 pub fn parse_with_includes<'a>(
-    loader: &'a impl Loader,
+    loader: &'a dyn Loader,
     arena: &'a Arena,
     path: &Path,
     scribe: &mut Scribe,
@@ -56,7 +56,7 @@ pub fn parse_with_includes<'a>(
 
 /// Parse the concatenation of the source files named by `paths`.
 pub fn parse_concat_with_includes<'a>(
-    loader: &'a impl Loader,
+    loader: &'a dyn Loader,
     arena: &'a Arena,
     paths: &[&Path],
     scribe: &mut Scribe,
@@ -91,7 +91,7 @@ pub fn parse_concat_with_includes<'a>(
 
 fn visit_includes<'a>(
     depth: usize,
-    loader: &'a impl Loader,
+    loader: &'a dyn Loader,
     arena: &'a Arena,
     path: &Path,
     dts: &Dts<'a>,

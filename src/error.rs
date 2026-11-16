@@ -128,7 +128,7 @@ impl Scribe {
     /// (Warnings are printed only if no errors occurred.)
     /// Returns false if errors occurred, or true otherwise.
     #[must_use]
-    pub fn report(self, loader: &impl Loader, console: &mut impl Write) -> bool {
+    pub fn report(self, loader: &dyn Loader, console: &mut impl Write) -> bool {
         let (warnings, errors) = self.into_inner();
         if errors.is_empty() {
             for err in warnings {

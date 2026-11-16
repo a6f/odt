@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 pub fn eval(
     tree: SourceNode,
     node_labels: LabelMap,
-    loader: &impl Loader,
+    loader: &dyn Loader,
     scribe: &mut Scribe,
 ) -> TupleNode {
     let phandles = assign_phandles(&tree, &node_labels, scribe);
@@ -30,7 +30,7 @@ pub fn eval(
             "can't load file {path:?}"
         ))),
     };
-    let mut tree = evaluate_expressions(tree, &node_labels, &phandles, read_file, scribe);
+    let mut tree = evaluate_expressions(tree, &node_labels, &phandles, &read_file, scribe);
     // poke assigned phandle values into the final tree
     for (path, phandle) in phandles {
         tree.walk_mut(path.segments()).unwrap().set_property(
@@ -61,7 +61,7 @@ fn path_from_bytes(bytes: &[u8]) -> PathBuf {
 /// source nodes to cwd-relative or absolute paths (rather than relative to the including file).
 /// Call with the output of `crate::merge::merge()`.
 pub fn resolve_incbin_paths<'a>(
-    loader: &'a impl Loader,
+    loader: &'a dyn Loader,
     arena: &'a Arena,
     tree: SourceNode<'a>,
     scribe: &mut Scribe,
@@ -235,7 +235,7 @@ fn node_phandle<P>(
         lookup_phandle,
         |_| Err(propvalue.err("phandle expression cannot use property references")),
         // dtc allows this, but there's no need for it.
-        |_| Err(propvalue.err("phandle expression cannot use /incbin/")),
+        &|_| Err(propvalue.err("phandle expression cannot use /incbin/")),
     )?;
     let [phandle] = &phandle[..] else {
         return Err(propvalue.err("phandle must be one cell"));
@@ -280,7 +280,7 @@ fn eval_property_reference(
     loc: &NodePath,
     labels: &LabelResolver<&Prop>,
     phandles: &LinkedHashMap<NodePath, u32>,
-    read_file: &impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
+    read_file: &dyn Fn(&Path) -> Result<Vec<u8>, SourceError>,
     propref: &PropertyReference,
     visited: &RefCell<HashSet<usize>>,
 ) -> Result<TupleItem, SourceError> {
@@ -317,7 +317,7 @@ fn eval_property_reference(
         lookup_label,
         lookup_phandle,
         lookup_property,
-        |p| read_file(p),
+        &|p| read_file(p),
     );
 
     // Remove the visited key from the set now that we're done evaluating it
@@ -334,7 +334,7 @@ fn evaluate_expressions(
     root: SourceNode,
     node_labels: &LabelMap,
     phandles: &PhandleMap,
-    read_file: impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
+    read_file: &dyn Fn(&Path) -> Result<Vec<u8>, SourceError>,
     scribe: &mut Scribe,
 ) -> TupleNode {
     let old = root.clone();
@@ -364,7 +364,7 @@ fn evaluate_expressions(
                 lookup_label,
                 lookup_phandle,
                 lookup_prop,
-                read_file,
+                &read_file,
             ) {
                 Ok(v) => v,
                 Err(e) => {
@@ -386,7 +386,7 @@ fn evaluate_propvalue(
     lookup_label: impl Fn(&NodeReference) -> Result<NodePath, SourceError>,
     lookup_phandle: impl Fn(&NodeReference) -> Result<(NodePath, u32), SourceError>,
     lookup_property_fn: impl Fn(&PropertyReference) -> Result<TupleItem, SourceError>,
-    read_file: impl Fn(&Path) -> Result<Vec<u8>, SourceError>,
+    read_file: &dyn Fn(&Path) -> Result<Vec<u8>, SourceError>,
 ) -> Result<Tuple, SourceError> {
     let mut r = vec![];
     let lookup_property = Some(&lookup_property_fn);
