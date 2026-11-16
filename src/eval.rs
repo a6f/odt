@@ -283,15 +283,11 @@ fn eval_property_reference(
     read_file: &dyn Fn(&Path) -> Result<Vec<u8>, SourceError>,
     propref: &PropertyReference,
     visited: &RefCell<HashSet<usize>>,
-) -> Result<TupleItem, SourceError> {
+) -> Result<Tuple, SourceError> {
     let (nodepath, prop) = labels.prop_from_prop_ref(loc, propref)?;
 
-    // TODO:  It would be nice to report both spans relevant to these errors.
     let Some(propvalue) = prop.prop_value else {
-        return Err(propref.err("reference to empty value"));
-    };
-    if propvalue.labeled_value.len() != 1 {
-        return Err(propref.err("reference to multiple values"));
+        return Ok(vec![]); // empty property
     };
 
     // Reuse the lookup rules from `evaluate_expressions`
@@ -323,11 +319,7 @@ fn eval_property_reference(
     // Remove the visited key from the set now that we're done evaluating it
     visited.borrow_mut().remove(&key);
 
-    let Ok([result]) = <_ as TryInto<[_; 1]>>::try_into(result?) else {
-        unreachable!("bug: evaluating a one-element propvalue produced multiple items!");
-    };
-
-    Ok(result)
+    result
 }
 
 fn evaluate_expressions(
@@ -385,7 +377,7 @@ fn evaluate_propvalue(
     propvalue: &PropValue,
     lookup_label: impl Fn(&NodeReference) -> Result<NodePath, SourceError>,
     lookup_phandle: impl Fn(&NodeReference) -> Result<(NodePath, u32), SourceError>,
-    lookup_property_fn: impl Fn(&PropertyReference) -> Result<TupleItem, SourceError>,
+    lookup_property_fn: impl Fn(&PropertyReference) -> Result<Tuple, SourceError>,
     read_file: &dyn Fn(&Path) -> Result<Vec<u8>, SourceError>,
 ) -> Result<Tuple, SourceError> {
     let mut r = vec![];
@@ -416,7 +408,15 @@ fn evaluate_propvalue(
                             let phandle = Some(phandle);
                             TupleItem::NodeReference { path, phandle }
                         }
-                        Cell::PropertyReference(propref) => lookup_property_fn(propref)?,
+                        Cell::PropertyReference(propref) => {
+                            let result = lookup_property_fn(propref)?;
+                            sole_item(result).map_err(|vec| {
+                                propref.err(format!(
+                                    "property reference in cell context must produce one item; got {} items",
+                                    vec.len()
+                                ))
+                            })?
+                        }
                         Cell::ParenExpr(expr) => TupleItem::from_u64(expr.eval(lookup_property)?),
                         Cell::IntLiteral(lit) => TupleItem::from_u64(lit.eval(lookup_property)?),
                     };
@@ -463,7 +463,7 @@ fn evaluate_propvalue(
             }
             Value::PropertyReference(propref) => {
                 let prop = lookup_property_fn(propref)?;
-                r.push(prop);
+                r.extend(prop);
             }
             Value::ByteString(bytestring) => {
                 let mut bytes = vec![];
@@ -488,6 +488,11 @@ fn evaluate_propvalue(
         }
     }
     Ok(r)
+}
+
+fn sole_item(vec: Tuple) -> Result<TupleItem, Tuple> {
+    let [item] = vec.try_into()?;
+    Ok(item)
 }
 
 trait UnescapeExt<'a> {
@@ -584,10 +589,10 @@ impl<'a> UnescapeExt<'a> for pest::Span<'a> {
 trait EvalExt<T> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError>
     where
-        T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>;
+        T: Fn(&PropertyReference) -> Result<Tuple, SourceError>;
 }
 
-impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for IntLiteral<'_> {
+impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for IntLiteral<'_> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         match self {
             IntLiteral::CharLiteral(c) => {
@@ -600,9 +605,7 @@ impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for
     }
 }
 
-impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T>
-    for NumericLiteral<'_>
-{
+impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for NumericLiteral<'_> {
     fn eval(&self, _lookup_property: Option<&T>) -> Result<u64, SourceError> {
         let s = self.str().trim_end_matches(['U', 'L']); // dtc is case-sensitive here
         parse_int(s).ok_or_else(|| self.err("bad numeric literal"))
@@ -623,19 +626,19 @@ fn parse_int(s: &str) -> Option<u64> {
     u64::from_str_radix(digits, radix).ok()
 }
 
-impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for ParenExpr<'_> {
+impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for ParenExpr<'_> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         self.expr.eval(lookup_property)
     }
 }
 
-impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for Expr<'_> {
+impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for Expr<'_> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         self.ternary_prec.eval(lookup_property)
     }
 }
 
-impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for UnaryExpr<'_> {
+impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for UnaryExpr<'_> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         let arg = self.unary_prec.eval(lookup_property)?;
         match self.unary_op {
@@ -647,7 +650,7 @@ impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for
     }
 }
 
-impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for TernaryPrec<'_> {
+impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for TernaryPrec<'_> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         let left = self.logical_or_prec.eval(lookup_property)?;
         let [mid, right] = self.expr else {
@@ -664,7 +667,7 @@ impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for
 
 macro_rules! impl_binary_eval {
     ($rule:ident, $op:ident, $arg:ident) => {
-        impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for $rule<'_> {
+        impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for $rule<'_> {
             fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
                 let mut left = self.$arg[0].eval(lookup_property);
                 for (op, right) in core::iter::zip(self.$op, &self.$arg[1..]) {
@@ -693,7 +696,7 @@ impl_binary_eval!(ShiftPrec, shift_prec_op, add_prec);
 impl_binary_eval!(AddPrec, add_prec_op, mul_prec);
 impl_binary_eval!(MulPrec, mul_prec_op, unary_prec);
 
-impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for UnaryPrec<'_> {
+impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for UnaryPrec<'_> {
     fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
         match self {
             UnaryPrec::UnaryExpr(x) => x.eval(lookup_property),
@@ -704,7 +707,13 @@ impl<T: Fn(&PropertyReference) -> Result<TupleItem, SourceError>> EvalExt<T> for
                     return Err(x.err("property references not allowed in this evaluation context"));
                 };
 
-                let item = lookup(x)?;
+                let result = lookup(x)?;
+                let item = sole_item(result).map_err(|vec| {
+                    x.err(format!(
+                        "property reference in arithmetic context must produce one item; got {} items",
+                        vec.len()
+                    ))
+                })?;
                 item.as_u64().ok_or(x.err(format!(
                     "only numbers may be used in arithmetic context; property reference resolves to `{item}`")))
             }
@@ -827,6 +836,14 @@ fn test_eval() {
                 }
             }
             assert_eq!(left, right, "mismatch in property {name}");
+        }
+        for (name, node) in check.children() {
+            if let Some(expected) = node.get_property("expected") {
+                let Some(actual) = node.get_property("actual") else {
+                    panic!("missing property /check/{name}/actual");
+                };
+                assert_eq!(expected, actual, "mismatch in node /check/{name}");
+            }
         }
     }
 }

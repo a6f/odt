@@ -11,16 +11,20 @@
     a = <100>;
     b = <200>;
 
-    check {
-        label_foo: foo {
-            u32_prop = <3>;
-        };
+    array = <1 2 3>;
+    empty;
+    explicit-empty = <>;
+    explicit-empty-2 = <>, <>;
+    mixed = "one", <2>, [03], <&label_foo>, &label_foo;
+
+    label_foo: foo {
+        u32_prop = <3>;
     };
 };
 
 / {
     check {
-        absolute_ref_to_label  = <${/check/foo/u32_prop} 3>;
+        absolute_ref_to_label  = <${/foo/u32_prop} 3>;
         relative_ref_to_label = <${label_foo/u32_prop} 3>;
 
         u64cell_test = /bits/ 64 < ${/u64_cell} >, /bits/ 64 <1>;
@@ -36,5 +40,35 @@
         expr_ref_test0 = <( ${/c} + ${/a} )>, <400>;
         expr_ref_test1 = <( ${/a} * 20 )>, <2000>;
         expr_ref_test2 = <( ${/a} - 10 + ${/c} )>, <390>;
+
+        array-ref {
+            expected = <1 2 3>;
+            actual = ${/array};
+        };
+
+        empty-ref {
+            expected;
+            actual = ${/empty};
+        };
+
+        explicit-empty-ref {
+            expected;
+            actual = ${/explicit-empty};
+        };
+
+        explicit-empty-2-ref {
+            expected;
+            actual = ${/explicit-empty-2};
+        };
+
+        mixed-ref {
+            expected = "one", <2>, [03], <&label_foo>, &label_foo;
+            actual = ${/mixed};
+        };
+
+        paste-refs {
+            expected = <1 2 3>, "one", <2>, [03], <&label_foo>, &label_foo;
+            actual = ${/array}, ${/empty}, ${/explicit-empty}, ${/explicit-empty-2}, ${/mixed};
+        };
     };
 };
