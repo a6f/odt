@@ -97,7 +97,7 @@ Value = { Cells | QuotedString | NodeReference | PropertyReference | ByteString 
 
 Cells = { Bits? ~ OpenCells ~ Cell* ~ CloseCells }
 // TODO: remove /bits/ once we've stopped using FDT binary output
-Bits = { SlashBits ~ NumericLiteral }
+Bits = { SlashBits ~ IntLiteral }
 OpenCells = { "<" }
 CloseCells = { ">" }
 
@@ -157,14 +157,8 @@ GreaterThan = { ">" }
 Equal = { "==" }
 NotEqual = { "!=" }
 
-IntLiteral = ${ CharLiteral | NumericLiteral }
-
-// To improve error messages, escape sequences are not fully parsed here.
-CharLiteral = @{ "'" ~ singlequotedchar* ~ "'" }
-singlequotedchar = _{ !("'" | "\\") ~ ANY | "\\" ~ ANY }
-
 // TODO: add binary literals, digit separators
-NumericLiteral = @{ (HexLiteral | OctalLiteral | DecimalLiteral) }
+IntLiteral = @{ (HexLiteral | OctalLiteral | DecimalLiteral) }
 HexLiteral = @{ ^"0x" ~ ('0'..'9' | 'A'..'F' | 'a'..'f')* }
 // TODO: change to 0o
 OctalLiteral = @{ "0" ~ ('0'..'7')* }

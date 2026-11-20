@@ -376,7 +376,7 @@ fn evaluate_propvalue(
                 let bits = match cells.bits {
                     None => 32,
                     Some(bits) => {
-                        let n = bits.numeric_literal.eval(lookup_property)?;
+                        let n = bits.int_literal.eval(lookup_property)?;
                         match n {
                             8 | 16 | 32 | 64 => n,
                             _ => return Err(bits.err("bad bit width: must be 8, 16, 32, or 64")),
@@ -487,16 +487,6 @@ impl<'a> UnescapeExt<'a> for QuotedString<'a> {
     }
 }
 
-impl<'a> UnescapeExt<'a> for CharLiteral<'a> {
-    fn unescape(&self) -> Result<Cow<'a, [u8]>, SourceError> {
-        let r = self.trim_one().unescape()?;
-        match r.len() {
-            1 => Ok(r),
-            n => Err(self.err(format!("char literal is {n} bytes, should be one byte"))),
-        }
-    }
-}
-
 impl<'a> UnescapeExt<'a> for pest::Span<'a> {
     fn unescape(&self) -> Result<Cow<'a, [u8]>, SourceError> {
         let s = self.as_str();
@@ -575,21 +565,8 @@ trait EvalExt<T> {
 }
 
 impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for IntLiteral<'_> {
-    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
-        match self {
-            IntLiteral::CharLiteral(c) => {
-                let bytes = c.unescape()?;
-                // This is a C 'char'; it has one byte.
-                Ok(bytes[0].into())
-            }
-            IntLiteral::NumericLiteral(n) => n.eval(lookup_property),
-        }
-    }
-}
-
-impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for NumericLiteral<'_> {
     fn eval(&self, _lookup_property: Option<&T>) -> Result<u64, SourceError> {
-        parse_int(self.str()).ok_or_else(|| self.err("bad numeric literal"))
+        parse_int(self.str()).ok_or_else(|| self.err("bad integer literal"))
     }
 }
 
@@ -779,7 +756,6 @@ fn test_property_reference_cycles() {
 #[test]
 fn test_eval() {
     for source in [
-        include_str!("testdata/charlit.dts"),
         include_str!("testdata/expr.dts"),
         include_str!("testdata/phandle.dts"),
         #[cfg(feature = "wrapping-arithmetic")]
