@@ -181,6 +181,13 @@
            <0x07>;
 };
 -- 23
+/ {
+    big = <0 999 9999 99_999 999_999 9_999_999 9_999_999_999_999>,
+          <0x00 0x0f 0xff 0xfff 0xffff 0xffff_ffff 0xff_ffff_ffff 0xffff_ffff_ffff_ffff>,
+          <0o0 0o777 0o3777 0o7_777_777>,
+          <0b0 0b1111 0b1111_1111 0b1_1111_1111_1111>;
+};
+-- 24
 /* this comment cannot be consumed by Dts since it precedes Header */
 /dts-v1/;
 

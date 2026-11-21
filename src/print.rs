@@ -228,7 +228,11 @@ impl PrettyPrinter {
                 self.last_output_position.clear();
             }
 
-            write!(self.out, "{text}").unwrap();
+            if rule == Rule::IntLiteral {
+                write!(self.out, "{}", pretty_int(text)).unwrap();
+            } else {
+                write!(self.out, "{text}").unwrap();
+            }
         }
 
         // Indent following tokens but not this token.
@@ -257,6 +261,54 @@ impl PrettyPrinter {
         };
         self.out.ensure_following_lines(lines);
     }
+}
+
+fn pretty_int(s: &str) -> String {
+    let Some((value, radix)) = parse_int(s) else {
+        return s.to_string();
+    };
+    let (digits, group) = match radix {
+        16 => (format!("{value:02x}"), 4),
+        10 => (format!("{value}"), 3),
+        8 => (format!("{value:o}"), 3),
+        2 => (format!("{value:b}"), 4),
+        _ => unreachable!(),
+    };
+    let mut buf = String::new();
+    if radix != 10 {
+        buf.push_str(&s[..2]);
+    }
+    let n = digits.len();
+    if n <= 4 {
+        buf.push_str(&digits);
+        return buf;
+    }
+    let mut i = n % group;
+    buf.push_str(&digits[..i]);
+    while i < n {
+        if i > 0 {
+            buf.push('_');
+        }
+        buf.push_str(&digits[i..][..group]);
+        i += group;
+    }
+    buf
+}
+
+fn parse_int(s: &str) -> Option<(u64, u32)> {
+    let (digits, radix) = if let Some(hex) = s.strip_prefix("0x") {
+        (hex, 16)
+    } else if let Some(oct) = s.strip_prefix("0o") {
+        (oct, 8)
+    } else if let Some(bin) = s.strip_prefix("0b") {
+        (bin, 2)
+    } else if s.starts_with(|c: char| c.is_ascii_digit()) {
+        (s, 10)
+    } else {
+        return None;
+    };
+    let value = u64::from_str_radix(&digits.replace('_', ""), radix).ok()?;
+    Some((value, radix))
 }
 
 #[cfg(test)]

@@ -131,6 +131,13 @@ p3;
 / {
   prop = <3>, <4 5>, "six", <0x07>;
 };
+-- 24
+/ {
+  big = <0 999 9999 99999 999999 9999999 9999999999999>,
+        <0x0 0xf 0xff 0xfff 0xffff 0xffffffff 0xffffffffff 0xffffffffffffffff>,
+        <0o0 0o777 0o3777 0o7777777>,
+        <0b0 0b1111 0b11111111 0b1111111111111>;
+};
 -- 23
 /* this comment cannot be consumed by Dts since it precedes Header */
 /dts-v1/;
