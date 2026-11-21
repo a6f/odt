@@ -534,17 +534,20 @@ impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for Int
 }
 
 fn parse_int(s: &str) -> Option<u64> {
-    if s == "0" {
-        return Some(0);
-    };
-    let (digits, radix) = if let Some(hex) = s.strip_prefix("0x").or(s.strip_prefix("0X")) {
+    let (digits, radix) = if let Some(hex) = s.strip_prefix("0x") {
         (hex, 16)
-    } else if let Some(oct) = s.strip_prefix('0') {
+    } else if let Some(oct) = s.strip_prefix("0o") {
         (oct, 8)
-    } else {
+    } else if let Some(bin) = s.strip_prefix("0b") {
+        (bin, 2)
+    } else if s.starts_with(|c: char| c.is_ascii_digit()) {
         (s, 10)
+    } else {
+        return None;
     };
-    u64::from_str_radix(digits, radix).ok()
+
+    // OPT: non-allocating version of this
+    u64::from_str_radix(&digits.replace('_', ""), radix).ok()
 }
 
 impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for ParenExpr<'_> {
@@ -720,6 +723,7 @@ fn test_property_reference_cycles() {
 fn test_eval() {
     for source in [
         include_str!("testdata/expr.dts"),
+        include_str!("testdata/literals.dts"),
         include_str!("testdata/phandle.dts"),
         #[cfg(feature = "wrapping-arithmetic")]
         include_str!("testdata/random_expressions.dts"),
