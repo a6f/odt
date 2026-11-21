@@ -40,10 +40,7 @@ pub fn eval(
                 //   TupleItem::NodeReference { path, phandle: Some(phandle) }
                 // However, if the output is pretty-printed and reevaluated, that will result in a
                 // different phandle assignment order.  So for now we emit them as bare numbers.
-                TupleItem::Number {
-                    bits: 32,
-                    value: phandle.into(),
-                },
+                TupleItem::Number(phandle.into()),
             ],
         );
     }
@@ -229,7 +226,7 @@ fn node_phandle<P>(
         return Err(propvalue.err("phandle must be one cell"));
     };
     let phandle = match phandle {
-        TupleItem::Number { bits: 32, value } => *value as u32,
+        TupleItem::Number(value) => *value as u32,
         TupleItem::NodeReference {
             phandle: Some(value),
             ..
@@ -373,23 +370,10 @@ fn evaluate_propvalue(
     for value in propvalue.value {
         match value {
             Value::Cells(cells) => {
-                let bits = match cells.bits {
-                    None => 32,
-                    Some(bits) => {
-                        let n = bits.int_literal.eval(lookup_property)?;
-                        match n {
-                            8 | 16 | 32 | 64 => n,
-                            _ => return Err(bits.err("bad bit width: must be 8, 16, 32, or 64")),
-                        }
-                    }
-                };
                 for cell in cells.cell {
-                    let mut item = match cell {
+                    let item = match cell {
                         Cell::NodeReference(noderef) => {
                             let (path, phandle) = lookup_phandle(noderef)?;
-                            if bits != 32 {
-                                return Err(noderef.err("phandle references need /bits/ == 32"));
-                            }
                             let phandle = Some(phandle);
                             TupleItem::NodeReference { path, phandle }
                         }
@@ -405,27 +389,6 @@ fn evaluate_propvalue(
                         Cell::ParenExpr(expr) => TupleItem::from_u64(expr.eval(lookup_property)?),
                         Cell::IntLiteral(lit) => TupleItem::from_u64(lit.eval(lookup_property)?),
                     };
-                    if let TupleItem::Number { value, .. } = item {
-                        if let Some(n) = item.as_u64()
-                            && bits < 64
-                        {
-                            // dtc warns if the lost bits are not all the same.
-                            // We might also want to warn if they are ones but the value looks positive.
-                            let sign_bits = (63 - bits) as u32;
-                            let sign_extended = ((n as i64) << sign_bits >> sign_bits) as u64;
-                            if n != sign_extended {
-                                let err = cell.err(format!("value exceeds {bits} bits"));
-                                let trunc = n & sign_extended;
-                                let tchars = 2 + bits as usize / 4;
-                                // TODO: Reporter interface for warnings.  Can't decorate span with file path
-                                // here, and these are printed even if a more severe error occurs later.
-                                eprintln!("Truncating value {n:#x} to {trunc:#0tchars$x}:\n{err}");
-                            }
-                        }
-                        // take bits from this cell list
-                        let bits = bits as u8;
-                        item = TupleItem::Number { bits, value };
-                    }
                     r.push(item);
                 }
             }
@@ -779,11 +742,7 @@ fn test_eval() {
                 panic!("property {name} did not produce a two-element tuple: {value:?}");
             };
             if let TupleItem::NodeReference { path, phandle } = left {
-                if let TupleItem::Number {
-                    bits: 32,
-                    value: right,
-                } = right
-                {
+                if let TupleItem::Number(right) = right {
                     assert_eq!(*phandle, Some(*right as u32), "mismatch in property {name}");
                     continue;
                 }

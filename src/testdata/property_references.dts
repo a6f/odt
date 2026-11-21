@@ -1,10 +1,7 @@
 /dts-v1/;
 
 / {
-    u64_cell = /bits/ 64 <1>;
-    u32_cell = /bits/ 32 <2>;
-    u16_cell = /bits/ 16 <3>;
-    u8_cell  = /bits/  8 <4>;
+    int = <1>;
 
     // Expressions don't depend on evaluation order
     c = <( ${a} + ${b} )>;
@@ -27,15 +24,8 @@
         absolute_ref_to_label  = <${/foo/u32_prop} 3>;
         relative_ref_to_label = <${label_foo/u32_prop} 3>;
 
-        u64cell_test = /bits/ 64 < ${/u64_cell} >, /bits/ 64 <1>;
-        u32cell_test = /bits/ 32 < ${/u32_cell} >, /bits/ 32 <2>;
-        u16cell_test = /bits/ 16 < ${/u16_cell} >, /bits/ 16 <3>;
-        u8cell_test  = /bits/  8 < ${/u8_cell} >,  /bits/  8 <4>;
-
-        u64expr_test = /bits/ 64 <( ${/u64_cell} )>, /bits/ 64 <(1)>;
-        u32expr_test = /bits/ 32 <( ${/u32_cell} )>, /bits/ 32 <(2)>;
-        u16expr_test = /bits/ 16 <( ${/u16_cell} )>, /bits/ 16 <(3)>;
-        u8expr_test  = /bits/  8 <( ${/u8_cell} )>,  /bits/  8 <(4)>;
+        int_cell_test = < ${/int} >, <1>;
+        int_expr_test = <( ${/int} )>, <(1)>;
 
         expr_ref_test0 = <( ${/c} + ${/a} )>, <400>;
         expr_ref_test1 = <( ${/a} * 20 )>, <2000>;

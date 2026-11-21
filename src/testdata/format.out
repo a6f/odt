@@ -82,8 +82,8 @@
 / {
     empty-prop;
     prop = <(3)>,
-        /bits/ 7 <(-1)>,
-                 <>, "string", [aa bb];
+           <(-1)>,
+           <>, "string", [aa bb];
     /delete-property/ prop;
     /delete-node/ child;
 

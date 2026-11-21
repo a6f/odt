@@ -22,7 +22,7 @@
     relref = <&{drv/c}>;
     relref2 = <&{drv/unlabeled}>;
     // phandle reference in a more complex propvalue
-    mixedref = "foo", /bits/ 32 <0 &b 0>, "bar";
+    mixedref = "foo", <0 &b 0>, "bar";
   };
 
   visited_last_when_assign_phandles {

@@ -14,10 +14,7 @@ pub type Tuple = Vec<TupleItem>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TupleItem {
-    Number {
-        bits: u8,
-        value: u64,
-    },
+    Number(u64),
     NodeReference {
         path: NodePath,
         phandle: Option<u32>,
@@ -32,12 +29,12 @@ pub enum TupleItem {
 
 impl TupleItem {
     pub const fn from_u64(value: u64) -> Self {
-        Self::Number { bits: 64, value }
+        Self::Number(value)
     }
 
     pub const fn as_u64(&self) -> Option<u64> {
         match self {
-            &Self::Number { value, .. } => Some(value),
+            &Self::Number(value) => Some(value),
             _ => None,
         }
     }
@@ -77,13 +74,7 @@ impl TupleItem {
             out.write_all(b"\0")
         }
         match self {
-            &Self::Number { bits, value } => match bits {
-                8 => out.write_all(&(value as u8).to_be_bytes()),
-                16 => out.write_all(&(value as u16).to_be_bytes()),
-                32 => out.write_all(&(value as u32).to_be_bytes()),
-                64 => out.write_all(&value.to_be_bytes()),
-                n => unreachable!("invalid /bits/ {n}"),
-            },
+            &Self::Number(value) => out.write_all(&(value as u32).to_be_bytes()),
             Self::NodeReference { phandle, path } => match phandle {
                 Some(phandle) => out.write_all(&phandle.to_be_bytes()),
                 None => write_null_terminated(out, path.display().as_bytes()),
@@ -98,7 +89,7 @@ impl TupleItem {
 impl fmt::Display for TupleItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Number { value, .. } => write!(f, "{value:#04x}"),
+            Self::Number(value) => write!(f, "{value:#04x}"),
             Self::String(s) => {
                 write!(f, "\"")?;
                 for b in s.as_bytes() {
@@ -127,33 +118,29 @@ impl OptionDisplay for Tuple {
             return None;
         }
         let mut f = String::new();
-        let mut bits = None;
+        let mut in_cells = false;
         for item in self {
-            let next_bits = match item {
-                &TupleItem::Number { bits, .. } => Some(bits),
-                TupleItem::NodeReference {
-                    phandle: Some(_), ..
-                } => Some(32),
-                _ => None,
-            };
-            if bits != next_bits {
-                if bits.is_some() {
-                    _ = write!(f, ">, ");
-                }
-                match next_bits {
-                    Some(32) => _ = write!(f, "<"),
-                    Some(n) => _ = write!(f, "/bits/ {n} <"),
-                    None => (),
-                }
-                bits = next_bits;
-            } else if bits.is_some() {
+            let next_cells = matches!(
+                item,
+                TupleItem::Number(_)
+                    | TupleItem::NodeReference {
+                        phandle: Some(_),
+                        ..
+                    }
+            );
+            if in_cells && !next_cells {
+                _ = write!(f, ">, ");
+            } else if !in_cells && next_cells {
+                _ = write!(f, "<");
+            } else if in_cells {
                 _ = write!(f, " ");
             } else if !f.is_empty() {
                 _ = write!(f, ", ");
             }
             _ = write!(f, "{item}");
+            in_cells = next_cells;
         }
-        if bits.is_some() {
+        if in_cells {
             _ = write!(f, ">");
         }
         Some(f)

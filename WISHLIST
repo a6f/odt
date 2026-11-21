@@ -1,6 +1,5 @@
 library features
 ----
-emulate dtc's containers in order to assign the same phandles
 pretty-printing: better whitespace heuristics
 pretty-printing: more opinionated formatting (e.g. lowercase hex, insert digit separators)
 linting (e.g. unit addresses vs regs property)
@@ -14,8 +13,6 @@ named constants: could emulate cpp #define, or let #foo in an expression search 
 automatic semicolon insertion after closing braces
 optional digit separators
 binary literals
-terser syntax for 64-bit cells (for the mixed case of #address-cells = <2>; #size-cells = <1>;)
-typed phandle references
 in-band schemas
 allow division to produce rational values.  might need another division operator (perhaps U+00F7), or a warning when floor division would give a different result (expressions could use ~~ to truncate explicitly).
 

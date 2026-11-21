@@ -28,7 +28,6 @@ DtsFile = {  SOI ~ Dts ~ EOI }
 Dts = { TopDef* }
 
 Semicolon = { ";" }
-SlashBits = { "/bits/" }
 SlashDeleteNode = { "/delete-node/" }
 SlashDeleteProperty = { "/delete-property/" }
 SlashDtsV1 = { "/dts-v1/" }
@@ -95,9 +94,7 @@ PropValue = { Value ~ (Comma ~ Value)* }
 Comma = { "," }
 Value = { Cells | QuotedString | NodeReference | PropertyReference | ByteString | Incbin }
 
-Cells = { Bits? ~ OpenCells ~ Cell* ~ CloseCells }
-// TODO: remove /bits/ once we've stopped using FDT binary output
-Bits = { SlashBits ~ IntLiteral }
+Cells = { OpenCells ~ Cell* ~ CloseCells }
 OpenCells = { "<" }
 CloseCells = { ">" }
 
