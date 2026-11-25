@@ -19,7 +19,6 @@ num-traits = "0.2.19"
 
 [features]
 cli = ["clap"]
-wrapping-arithmetic = []
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

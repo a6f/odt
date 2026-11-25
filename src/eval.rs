@@ -646,33 +646,12 @@ impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for Una
 }
 
 fn eval_binary_op(left: u64, op: &str, right: u64) -> Result<u64, &'static str> {
-    fn check(checked_or_wrapping: Result<u64, u64>) -> Option<u64> {
-        match checked_or_wrapping {
-            Ok(checked) => Some(checked),
-            Err(wrapping) => cfg!(feature = "wrapping-arithmetic").then_some(wrapping),
-        }
-    }
-    fn add(a: u64, b: u64) -> Option<u64> {
-        check(a.checked_add(b).ok_or(a.wrapping_add(b)))
-    }
-    fn sub(a: u64, b: u64) -> Option<u64> {
-        check(a.checked_sub(b).ok_or(a.wrapping_sub(b)))
-    }
-    fn mul(a: u64, b: u64) -> Option<u64> {
-        check(a.checked_mul(b).ok_or(a.wrapping_mul(b)))
-    }
-    fn shl(a: u64, b: u64) -> u64 {
-        if b < 64 { a << b } else { 0 }
-    }
-    fn shr(a: u64, b: u64) -> u64 {
-        if b < 64 { a >> b } else { 0 }
-    }
     match op {
-        "+" => add(left, right).ok_or("arithmetic overflow"),
-        "-" => sub(left, right).ok_or("arithmetic overflow"),
-        "*" => mul(left, right).ok_or("arithmetic overflow"),
-        "<<" => Ok(shl(left, right)),
-        ">>" => Ok(shr(left, right)),
+        "+" => left.checked_add(right).ok_or("arithmetic overflow"),
+        "-" => left.checked_sub(right).ok_or("arithmetic overflow"),
+        "*" => left.checked_mul(right).ok_or("arithmetic overflow"),
+        "<<" => Ok(left.unbounded_shl(right.try_into().unwrap_or(u32::MAX))),
+        ">>" => Ok(left.unbounded_shr(right.try_into().unwrap_or(u32::MAX))),
         "/" => left.checked_div(right).ok_or("division by zero"),
         "%" => left.checked_rem(right).ok_or("division by zero"),
         "&" => Ok(left & right),
@@ -725,9 +704,8 @@ fn test_eval() {
         include_str!("testdata/expr.dts"),
         include_str!("testdata/literals.dts"),
         include_str!("testdata/phandle.dts"),
-        #[cfg(feature = "wrapping-arithmetic")]
-        include_str!("testdata/random_expressions.dts"),
         include_str!("testdata/property_references.dts"),
+        include_str!("testdata/random_expressions.dts"),
         include_str!("testdata/references.dts"),
     ] {
         let loader = crate::fs::DummyLoader;
