@@ -11,5 +11,4 @@ incompatible language features
 named constants: could emulate cpp #define, or let #foo in an expression search up the tree for a property #foo
 automatic semicolon insertion after closing braces
 in-band schemas
-allow division to produce rational values.  might need another division operator (perhaps U+00F7), or a warning when floor division would give a different result (expressions could use ~~ to truncate explicitly).
 

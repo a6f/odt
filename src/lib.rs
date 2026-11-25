@@ -17,6 +17,7 @@
 pub mod error;
 pub mod eval;
 pub mod flat;
+pub mod fraction;
 pub mod fs;
 pub mod label;
 pub mod line;
@@ -31,6 +32,7 @@ pub type Arena = bumpalo::Bump;
 pub type SourceNode<'i> = node::Node<&'i parse::rules::Prop<'i>>;
 pub type BinaryNode = node::Node<Vec<u8>>;
 pub type TupleNode = node::Node<tuple::Tuple>;
+pub type Number = fraction::Fraction;
 
 /// Compile one or more DTS files into a fully-evaluated tree of binary values.
 /// `loader` resolves input paths and `/include/` or `/incbin/` directives.

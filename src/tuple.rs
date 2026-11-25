@@ -3,6 +3,7 @@
 //! Unlike the DTB / FDT binary representation of property values, type information is retained,
 //! so integers, phandles, strings, etc can be distinguished reliably.
 
+use crate::Number;
 use crate::node::OptionDisplay;
 use crate::path::NodePath;
 use core::fmt;
@@ -14,7 +15,7 @@ pub type Tuple = Vec<TupleItem>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TupleItem {
-    Number(u64),
+    Number(Number),
     NodeReference {
         path: NodePath,
         phandle: Option<u32>,
@@ -29,12 +30,19 @@ pub enum TupleItem {
 
 impl TupleItem {
     pub const fn from_u64(value: u64) -> Self {
-        Self::Number(value)
+        Self::Number(Number::from_u64(value))
+    }
+
+    pub const fn as_number(&self) -> Option<Number> {
+        match self {
+            &Self::Number(value) => Some(value),
+            _ => None,
+        }
     }
 
     pub const fn as_u64(&self) -> Option<u64> {
         match self {
-            &Self::Number(value) => Some(value),
+            &Self::Number(value) => Some(value.to_u64()),
             _ => None,
         }
     }
@@ -74,7 +82,7 @@ impl TupleItem {
             out.write_all(b"\0")
         }
         match self {
-            &Self::Number(value) => out.write_all(&(value as u32).to_be_bytes()),
+            &Self::Number(value) => out.write_all(&(value.to_u64() as u32).to_be_bytes()),
             Self::NodeReference { phandle, path } => match phandle {
                 Some(phandle) => out.write_all(&phandle.to_be_bytes()),
                 None => write_null_terminated(out, path.display().as_bytes()),
@@ -89,7 +97,14 @@ impl TupleItem {
 impl fmt::Display for TupleItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Number(value) => write!(f, "{value:#04x}"),
+            Self::Number(value) => {
+                let int = value.to_u64();
+                if *value == Number::from_u64(int) {
+                    write!(f, "{int:#04x}")
+                } else {
+                    write!(f, "{value}")
+                }
+            }
             Self::String(s) => {
                 write!(f, "\"")?;
                 for b in s.as_bytes() {

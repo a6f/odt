@@ -7,7 +7,7 @@ use crate::parse::rules::*;
 use crate::parse::{SpanExt, TypedRuleExt, parse_quoted_string};
 use crate::path::NodePath;
 use crate::tuple::{Tuple, TupleItem};
-use crate::{Arena, SourceNode, TupleNode};
+use crate::{Arena, Number, SourceNode, TupleNode};
 use core::str::CharIndices;
 use hashlink::{LinkedHashMap, LinkedHashSet};
 use std::borrow::Cow;
@@ -226,7 +226,7 @@ fn node_phandle<P>(
         return Err(propvalue.err("phandle must be one cell"));
     };
     let phandle = match phandle {
-        TupleItem::Number(value) => *value as u32,
+        TupleItem::Number(value) => value.to_u32(),
         TupleItem::NodeReference {
             phandle: Some(value),
             ..
@@ -386,8 +386,8 @@ fn evaluate_propvalue(
                                 ))
                             })?
                         }
-                        Cell::ParenExpr(expr) => TupleItem::from_u64(expr.eval(lookup_property)?),
-                        Cell::IntLiteral(lit) => TupleItem::from_u64(lit.eval(lookup_property)?),
+                        Cell::ParenExpr(expr) => TupleItem::Number(expr.eval(lookup_property)?),
+                        Cell::IntLiteral(lit) => TupleItem::Number(lit.eval(lookup_property)?),
                     };
                     r.push(item);
                 }
@@ -522,18 +522,19 @@ impl<'a> UnescapeExt<'a> for pest::Span<'a> {
 
 /// Evaluate an expression or parse a literal.
 trait EvalExt<T> {
-    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError>
+    fn eval(&self, lookup_property: Option<&T>) -> Result<Number, SourceError>
     where
         T: Fn(&PropertyReference) -> Result<Tuple, SourceError>;
 }
 
 impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for IntLiteral<'_> {
-    fn eval(&self, _lookup_property: Option<&T>) -> Result<u64, SourceError> {
+    fn eval(&self, _lookup_property: Option<&T>) -> Result<Number, SourceError> {
         parse_int(self.str()).ok_or_else(|| self.err("bad integer literal"))
     }
 }
 
-fn parse_int(s: &str) -> Option<u64> {
+// TODO: extend to support floats, negative literals
+fn parse_int(s: &str) -> Option<Number> {
     let (digits, radix) = if let Some(hex) = s.strip_prefix("0x") {
         (hex, 16)
     } else if let Some(oct) = s.strip_prefix("0o") {
@@ -547,41 +548,42 @@ fn parse_int(s: &str) -> Option<u64> {
     };
 
     // OPT: non-allocating version of this
-    u64::from_str_radix(&digits.replace('_', ""), radix).ok()
+    u64::from_str_radix(&digits.replace('_', ""), radix)
+        .map(Number::from_u64)
+        .ok()
 }
 
 impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for ParenExpr<'_> {
-    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
+    fn eval(&self, lookup_property: Option<&T>) -> Result<Number, SourceError> {
         self.expr.eval(lookup_property)
     }
 }
 
 impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for Expr<'_> {
-    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
+    fn eval(&self, lookup_property: Option<&T>) -> Result<Number, SourceError> {
         self.ternary_prec.eval(lookup_property)
     }
 }
 
 impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for UnaryExpr<'_> {
-    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
+    fn eval(&self, lookup_property: Option<&T>) -> Result<Number, SourceError> {
         let arg = self.unary_prec.eval(lookup_property)?;
         match self.unary_op {
-            UnaryOp::LogicalNot(_) => Ok((arg == 0).into()),
-            UnaryOp::BitwiseNot(_) => Ok(!arg),
-            // Devicetree has only unsigned arithmetic, so negation is allowed to overflow.
-            UnaryOp::Negate(_) => Ok(arg.wrapping_neg()),
+            UnaryOp::LogicalNot(_) => Ok(Number::from_bool(!arg.to_bool())),
+            UnaryOp::BitwiseNot(_) => Ok(Number::from_u64(!arg.to_u64())),
+            UnaryOp::Negate(_) => Ok(arg.neg()),
         }
     }
 }
 
 impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for TernaryPrec<'_> {
-    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
+    fn eval(&self, lookup_property: Option<&T>) -> Result<Number, SourceError> {
         let left = self.logical_or_prec.eval(lookup_property)?;
         let [mid, right] = self.expr else {
             return Ok(left);
         };
         // Note that subexpression evaluation is lazy, unlike dtc.
-        if left != 0 {
+        if left.to_bool() {
             mid.eval(lookup_property)
         } else {
             right.eval(lookup_property)
@@ -592,7 +594,7 @@ impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for Ter
 macro_rules! impl_binary_eval {
     ($rule:ident, $op:ident, $arg:ident) => {
         impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for $rule<'_> {
-            fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
+            fn eval(&self, lookup_property: Option<&T>) -> Result<Number, SourceError> {
                 let mut left = self.$arg[0].eval(lookup_property);
                 for (op, right) in core::iter::zip(self.$op, &self.$arg[1..]) {
                     let right = right.eval(lookup_property)?;
@@ -621,7 +623,7 @@ impl_binary_eval!(AddPrec, add_prec_op, mul_prec);
 impl_binary_eval!(MulPrec, mul_prec_op, unary_prec);
 
 impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for UnaryPrec<'_> {
-    fn eval(&self, lookup_property: Option<&T>) -> Result<u64, SourceError> {
+    fn eval(&self, lookup_property: Option<&T>) -> Result<Number, SourceError> {
         match self {
             UnaryPrec::UnaryExpr(x) => x.eval(lookup_property),
             UnaryPrec::ParenExpr(x) => x.eval(lookup_property),
@@ -638,33 +640,40 @@ impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for Una
                         vec.len()
                     ))
                 })?;
-                item.as_u64().ok_or(x.err(format!(
+                item.as_number().ok_or(x.err(format!(
                     "only numbers may be used in arithmetic context; property reference resolves to `{item}`")))
             }
         }
     }
 }
 
-fn eval_binary_op(left: u64, op: &str, right: u64) -> Result<u64, &'static str> {
+fn eval_binary_op(left: Number, op: &str, right: Number) -> Result<Number, &'static str> {
+    let shift = right.to_u64().try_into().unwrap_or(u32::MAX);
     match op {
         "+" => left.checked_add(right).ok_or("arithmetic overflow"),
         "-" => left.checked_sub(right).ok_or("arithmetic overflow"),
         "*" => left.checked_mul(right).ok_or("arithmetic overflow"),
-        "<<" => Ok(left.unbounded_shl(right.try_into().unwrap_or(u32::MAX))),
-        ">>" => Ok(left.unbounded_shr(right.try_into().unwrap_or(u32::MAX))),
-        "/" => left.checked_div(right).ok_or("division by zero"),
+        "<<" => Ok(Number::from_u64(left.to_u64().unbounded_shl(shift))),
+        ">>" => Ok(Number::from_u64(left.to_u64().unbounded_shr(shift))),
+        "/" => left.checked_div(right).ok_or_else(|| {
+            if right == Number::ZERO {
+                "division by zero"
+            } else {
+                "arithmetic overflow"
+            }
+        }),
         "%" => left.checked_rem(right).ok_or("division by zero"),
-        "&" => Ok(left & right),
-        "|" => Ok(left | right),
-        "^" => Ok(left ^ right),
-        "&&" => Ok((left != 0 && right != 0) as u64),
-        "||" => Ok((left != 0 || right != 0) as u64),
-        "<=" => Ok((left <= right) as u64),
-        ">=" => Ok((left >= right) as u64),
-        "<" => Ok((left < right) as u64),
-        ">" => Ok((left > right) as u64),
-        "==" => Ok((left == right) as u64),
-        "!=" => Ok((left != right) as u64),
+        "&" => Ok(Number::from_u64(left.to_u64() & right.to_u64())),
+        "|" => Ok(Number::from_u64(left.to_u64() | right.to_u64())),
+        "^" => Ok(Number::from_u64(left.to_u64() ^ right.to_u64())),
+        "&&" => Ok(Number::from_bool(left.to_bool() && right.to_bool())),
+        "||" => Ok(Number::from_bool(left.to_bool() || right.to_bool())),
+        "<=" => Ok(Number::from_bool(left <= right)),
+        ">=" => Ok(Number::from_bool(left >= right)),
+        "<" => Ok(Number::from_bool(left < right)),
+        ">" => Ok(Number::from_bool(left > right)),
+        "==" => Ok(Number::from_bool(left == right)),
+        "!=" => Ok(Number::from_bool(left != right)),
         _ => Err("unknown binary operator"),
     }
 }
@@ -725,7 +734,11 @@ fn test_eval() {
             };
             if let TupleItem::NodeReference { path, phandle } = left {
                 if let TupleItem::Number(right) = right {
-                    assert_eq!(*phandle, Some(*right as u32), "mismatch in property {name}");
+                    assert_eq!(
+                        *phandle,
+                        Some(right.to_u32()),
+                        "mismatch in property {name}"
+                    );
                     continue;
                 }
                 if let TupleItem::String(right) = right {
