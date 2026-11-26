@@ -387,7 +387,7 @@ fn evaluate_propvalue(
                             })?
                         }
                         Cell::ParenExpr(expr) => TupleItem::Number(expr.eval(lookup_property)?),
-                        Cell::IntLiteral(lit) => TupleItem::Number(lit.eval(lookup_property)?),
+                        Cell::NumericLiteral(lit) => TupleItem::Number(lit.eval(lookup_property)?),
                     };
                     r.push(item);
                 }
@@ -527,14 +527,17 @@ trait EvalExt<T> {
         T: Fn(&PropertyReference) -> Result<Tuple, SourceError>;
 }
 
-impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for IntLiteral<'_> {
+impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for NumericLiteral<'_> {
     fn eval(&self, _lookup_property: Option<&T>) -> Result<Number, SourceError> {
-        parse_int(self.str()).ok_or_else(|| self.err("bad integer literal"))
+        parse_int(self.str()).ok_or_else(|| self.err("bad numeric literal"))
     }
 }
 
-// TODO: extend to support floats, negative literals
+// TODO: extend to support negative literals
 fn parse_int(s: &str) -> Option<Number> {
+    if s.contains('.') {
+        return Some(Number::from_f64(s.replace('_', "").parse::<f64>().ok()?));
+    }
     let (digits, radix) = if let Some(hex) = s.strip_prefix("0x") {
         (hex, 16)
     } else if let Some(oct) = s.strip_prefix("0o") {
@@ -627,7 +630,7 @@ impl<T: Fn(&PropertyReference) -> Result<Tuple, SourceError>> EvalExt<T> for Una
         match self {
             UnaryPrec::UnaryExpr(x) => x.eval(lookup_property),
             UnaryPrec::ParenExpr(x) => x.eval(lookup_property),
-            UnaryPrec::IntLiteral(x) => x.eval(lookup_property),
+            UnaryPrec::NumericLiteral(x) => x.eval(lookup_property),
             UnaryPrec::PropertyReference(x) => {
                 let Some(lookup) = lookup_property else {
                     return Err(x.err("property references not allowed in this evaluation context"));

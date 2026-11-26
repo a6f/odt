@@ -228,7 +228,9 @@ impl PrettyPrinter {
                 self.last_output_position.clear();
             }
 
-            if rule == Rule::IntLiteral {
+            if rule == Rule::NumericLiteral {
+                // TODO: this may need a flag to control it
+                // TODO: reformat floats too
                 write!(self.out, "{}", pretty_int(text)).unwrap();
             } else {
                 write!(self.out, "{text}").unwrap();
